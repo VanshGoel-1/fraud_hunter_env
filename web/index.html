@@ -257,6 +257,39 @@
         .delta-positive { color: var(--accent-green); font-weight: 600; }
         .delta-negative { color: var(--accent-red); font-weight: 600; }
 
+        /* Disconnected banner */
+        .disconnect-banner {
+            display: none;
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            border-radius: 12px;
+            padding: 14px 20px;
+            margin-bottom: 24px;
+            color: #fca5a5;
+            font-size: 14px;
+        }
+        .disconnect-banner.active { display: block; }
+        .disconnect-banner code {
+            background: rgba(0,0,0,0.3);
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+
+        /* Empty-state placeholders */
+        .empty-state {
+            color: var(--text-muted);
+            font-size: 13px;
+            text-align: center;
+            padding: 24px 12px;
+            font-style: italic;
+        }
+        .empty-state code {
+            background: rgba(0,0,0,0.3);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-style: normal;
+        }
+
         @media (max-width: 900px) {
             .grid-2 { grid-template-columns: 1fr; }
             .dashboard { padding: 16px; }
@@ -273,6 +306,10 @@
     </header>
 
     <main class="dashboard">
+        <div id="disconnectBanner" class="disconnect-banner">
+            ⚠ Disconnected from <code>/metrics</code> — start a client (e.g. <code>python eval.py --episodes 5</code>) to populate live data. KPIs are frozen at last known values.
+        </div>
+
         <!-- KPI Row -->
         <section class="stats-row">
             <div class="stat-card">
@@ -323,39 +360,39 @@
         <!-- Charts Row 2 -->
         <section class="grid-2">
             <div class="card">
-                <h3><span class="icon">🧬</span> Fraud Typology Detection Rate</h3>
-                <div id="typologyBars"></div>
+                <h3><span class="icon">🧬</span> Per-Policy Performance (from eval_results.json)</h3>
+                <div id="policyBars"><div class="empty-state">Run <code>python eval.py --episodes 30</code> to populate.</div></div>
             </div>
             <div class="card">
                 <h3><span class="icon">⚡</span> Action Error Rate</h3>
                 <div class="gauge-wrap">
-                    <div class="gauge-value" id="errorGauge">2.1%</div>
-                    <div class="gauge-label">Format validation failure rate</div>
+                    <div class="gauge-value" id="errorGauge">—</div>
+                    <div class="gauge-label">Format validation failures (live)</div>
                 </div>
                 <div class="chart-container" style="height:150px"><canvas id="errorChart"></canvas></div>
             </div>
         </section>
 
-        <!-- Before/After + Trace -->
+        <!-- Before/After + Latest Episode -->
         <section class="grid-2">
             <div class="card">
-                <h3><span class="icon">🔄</span> Before / After GRPO</h3>
+                <h3><span class="icon">🔄</span> Random vs Trained (from eval_results.json)</h3>
                 <table class="compare-table">
                     <thead>
-                        <tr><th>Metric</th><th>Random Policy</th><th>After GRPO</th><th>Δ</th></tr>
+                        <tr><th>Metric</th><th>Random</th><th>Trained</th><th>Δ</th></tr>
                     </thead>
-                    <tbody id="compareBody"></tbody>
+                    <tbody id="compareBody"><tr><td colspan="4" class="empty-state">Run <code>python eval.py --episodes 30</code> to populate.</td></tr></tbody>
                 </table>
             </div>
             <div class="card">
-                <h3><span class="icon">💭</span> Agent Reasoning Trace</h3>
-                <div class="trace-container" id="traceViewer"></div>
+                <h3><span class="icon">📡</span> Latest Episode Metrics (live SSE)</h3>
+                <pre id="latestEpisode" class="trace-container empty-state">Waiting for first episode from /metrics…</pre>
             </div>
         </section>
     </main>
 
     <script>
-        // ── Simulated data (replace with SSE from /metrics endpoint) ──────────
+        // ── Live data only — no simulation, no hardcoded fallbacks ────────────
 
         const rewardHistory = [];
         const tierHistory = [];
@@ -460,123 +497,84 @@
             ).join('');
         }
 
-        // ── Typology Bars ─────────────────────────────────────────────────────
-        function renderTypologyBars() {
-            const data = [
-                { name: 'Dead Patient', val: 92, color: '#10b981' },
-                { name: 'Duplicate Bill', val: 87, color: '#06b6d4' },
-                { name: 'Upcoding', val: 71, color: '#3b82f6' },
-                { name: 'AKS Violation', val: 54, color: '#8b5cf6' },
-                { name: 'PPP Fraud', val: 38, color: '#f59e0b' },
-                { name: 'Double Billing', val: 45, color: '#ef4444' },
-                { name: 'Product Sub.', val: 22, color: '#ec4899' },
-            ];
-            const container = document.getElementById('typologyBars');
-            container.innerHTML = data.map(d => `
-                <div class="typology-row">
-                    <div class="name">${d.name}</div>
-                    <div class="bar-bg">
-                        <div class="bar-fill" style="width:${d.val}%;background:${d.color}"></div>
-                    </div>
-                    <div class="val">${d.val}%</div>
-                </div>
-            `).join('');
+        // ── Per-Policy Bars (from /assets/eval_results.json) ─────────────────
+        async function renderPolicyBars() {
+            const container = document.getElementById('policyBars');
+            try {
+                const r = await fetch('/assets/eval_results.json', { cache: 'no-store' });
+                if (!r.ok) throw new Error('eval_results.json not found');
+                const data = await r.json();
+                // data shape: { policy_name: { episode_reward: [...], agentic_recall: [...], cot_validity_score: [...] } }
+                const policies = Object.keys(data);
+                if (!policies.length) throw new Error('empty');
+                const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b'];
+                const metrics = ['episode_reward', 'agentic_recall', 'cot_validity_score'];
+                const rows = [];
+                metrics.forEach((m, mi) => {
+                    rows.push(`<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">${m.replace(/_/g, ' ')}</div>`);
+                    policies.forEach((p, pi) => {
+                        const arr = (data[p] && data[p][m]) || [];
+                        const mean = arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+                        const isPct = m !== 'episode_reward';
+                        const display = isPct ? (mean * 100).toFixed(0) + '%' : mean.toFixed(1);
+                        // Bar width: clamp negative rewards to 0; map [0,1] for ratios
+                        const barPct = isPct ? Math.min(100, Math.max(0, mean * 100)) :
+                            Math.min(100, Math.max(0, (mean + 100) / 2));
+                        rows.push(`<div class="typology-row">
+                            <div class="name">${p}</div>
+                            <div class="bar-bg"><div class="bar-fill" style="width:${barPct}%;background:${colors[pi % colors.length]}"></div></div>
+                            <div class="val">${display}</div>
+                        </div>`);
+                    });
+                });
+                container.innerHTML = rows.join('');
+            } catch (e) {
+                container.innerHTML = `<div class="empty-state">Run <code>python eval.py --episodes 30</code> to populate.</div>`;
+            }
         }
 
-        // ── Before/After Table ────────────────────────────────────────────────
-        function renderCompareTable() {
-            const rows = [
-                { metric: 'Avg Episode Reward', before: -42.3, after: 847.5, fmt: v => v.toFixed(1) },
-                { metric: 'Agentic Recall', before: 0.12, after: 0.89, fmt: v => (v * 100).toFixed(0) + '%' },
-                { metric: 'CoT Validity', before: 0.0, after: 0.94, fmt: v => (v * 100).toFixed(0) + '%' },
-                { metric: 'Format Error Rate', before: 0.67, after: 0.021, fmt: v => (v * 100).toFixed(1) + '%' },
-                { metric: 'Proof Chains / ep', before: 0, after: 2.4, fmt: v => v.toFixed(1) },
-                { metric: 'Avg Tier Reached', before: 1.0, after: 3.8, fmt: v => v.toFixed(1) },
-            ];
+        // ── Random vs Trained Compare Table (from /assets/eval_results.json) ─
+        async function renderCompareTable() {
             const body = document.getElementById('compareBody');
-            body.innerHTML = rows.map(r => {
-                const delta = r.after - r.before;
-                const cls = delta > 0 ? 'delta-positive' : 'delta-negative';
-                const sign = delta > 0 ? '+' : '';
-                return `<tr>
-                    <td>${r.metric}</td>
-                    <td>${r.fmt(r.before)}</td>
-                    <td style="font-weight:600">${r.fmt(r.after)}</td>
-                    <td class="${cls}">${sign}${r.fmt(delta)}</td>
-                </tr>`;
-            }).join('');
-        }
-
-        // ── Agent Trace Viewer ────────────────────────────────────────────────
-        function renderTrace() {
-            const steps = [
-                { type: 'think', text: '<think> The whistleblower mentions Starpoint Medical LLC. Let me query the corporate registry to identify shell structures. </think>' },
-                { type: 'action', text: '→ query_corporate("Starpoint Medical LLC") → entity_id=E001, ubo_id=U001' },
-                { type: 'reward', text: '✓ +1.0 CoT grounded (entity Starpoint Medical LLC exists)' },
-                { type: 'think', text: '<think> E001 has ubo_id=U001. I should check if other entities share this UBO to identify shells. </think>' },
-                { type: 'action', text: '→ sql_query("SELECT * FROM corporate_registry WHERE ubo_id=\'U001\'") → 3 rows' },
-                { type: 'reward', text: '✓ +2.5 SQL rows bonus (3 rows returned)' },
-                { type: 'think', text: '<think> E003 Acme Shell LLC has parent=E002 Starpoint Holdings. This is a shell link! </think>' },
-                { type: 'action', text: '→ link_shell("Acme Shell LLC", "Starpoint Holdings Ltd")' },
-                { type: 'reward', text: '✓ +50.0 Shell link confirmed! Proof chain: entity→link' },
-                { type: 'think', text: '<think> Beneficiary B001 has dod=2025-11-03 but claim C003 date=2026-03-01. Dead patient! </think>' },
-                { type: 'action', text: '→ claim_contradiction("beneficiary:B001", "claim:C003", "dead_patient_claim")' },
-                { type: 'reward', text: '✓ +100.0 Contradiction confirmed (×1.0)! Full proof chain: entity→link→contradiction' },
-            ];
-            const viewer = document.getElementById('traceViewer');
-            viewer.innerHTML = steps.map(s =>
-                `<div class="trace-step ${s.type}">${s.text}</div>`
-            ).join('');
-        }
-
-        // ── Simulation Loop ──────────────────────────────────────────────────
-        function simulate() {
-            episode++;
-            const tier = Math.min(5, Math.floor(episode / 8) + 1);
-            const base = tier * 150 + (Math.random() - 0.3) * 200;
-            const reward = Math.max(-50, base);
-            const errors = Math.max(0, Math.floor(3 - episode * 0.08 + Math.random()));
-
-            rewardHistory.push(reward);
-            tierHistory.push(tier);
-            errorHistory.push(errors);
-
-            // Update charts
-            rewardChart.data.labels.push(episode);
-            rewardChart.data.datasets[0].data.push(reward);
-            const rollingAvg = rewardHistory.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, rewardHistory.length);
-            rewardChart.data.datasets[1].data.push(rollingAvg);
-            rewardChart.update('none');
-
-            tierChart.data.labels.push(episode);
-            tierChart.data.datasets[0].data.push(tier);
-            tierChart.update('none');
-
-            errorChart.data.labels.push(episode);
-            errorChart.data.datasets[0].data.push(errors);
-            errorChart.update('none');
-
-            // Update KPIs
-            document.getElementById('kpi-tier').textContent = tier;
-            document.getElementById('kpi-reward').textContent = rollingAvg.toFixed(1);
-            document.getElementById('kpi-recall').textContent = Math.min(99, 12 + episode * 1.8).toFixed(0) + '%';
-            document.getElementById('kpi-cot').textContent = Math.min(98, 5 + episode * 2.1).toFixed(0) + '%';
-            document.getElementById('kpi-errors').textContent = errors;
-            document.getElementById('kpi-chains').textContent = Math.floor(episode * 0.4);
-
-            renderTierBar(tier);
-
-            const errRate = (errorHistory.reduce((a, b) => a + b, 0) / errorHistory.length * 3.2).toFixed(1);
-            document.getElementById('errorGauge').textContent = errRate + '%';
+            try {
+                const r = await fetch('/assets/eval_results.json', { cache: 'no-store' });
+                if (!r.ok) throw new Error();
+                const data = await r.json();
+                const baseline = data.random_policy || data.random || null;
+                const trained = data.trained_policy || data.scripted_expert_policy || data.scripted_expert || null;
+                if (!baseline || !trained) throw new Error();
+                const metrics = [
+                    { key: 'episode_reward', label: 'Avg Episode Reward', fmt: v => v.toFixed(1) },
+                    { key: 'agentic_recall', label: 'Agentic Recall', fmt: v => (v * 100).toFixed(0) + '%' },
+                    { key: 'cot_validity_score', label: 'CoT Validity', fmt: v => (v * 100).toFixed(0) + '%' },
+                    { key: 'format_error_count', label: 'Format Errors / ep', fmt: v => v.toFixed(1) },
+                    { key: 'proof_chain_length', label: 'Proof Chain Length', fmt: v => v.toFixed(1) },
+                ];
+                const meanOf = (arr) => (arr && arr.length) ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+                body.innerHTML = metrics.map(({ key, label, fmt }) => {
+                    const before = meanOf(baseline[key]);
+                    const after = meanOf(trained[key]);
+                    const delta = after - before;
+                    const cls = delta > 0 ? 'delta-positive' : delta < 0 ? 'delta-negative' : '';
+                    const sign = delta > 0 ? '+' : '';
+                    return `<tr>
+                        <td>${label}</td>
+                        <td>${fmt(before)}</td>
+                        <td style="font-weight:600">${fmt(after)}</td>
+                        <td class="${cls}">${sign}${fmt(delta)}</td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                body.innerHTML = '<tr><td colspan="4" class="empty-state">Run <code>python eval.py --episodes 30</code> to populate.</td></tr>';
+            }
         }
 
         // ── Init ──────────────────────────────────────────────────────────────
         renderTierBar(1);
-        renderTypologyBars();
+        renderPolicyBars();
         renderCompareTable();
-        renderTrace();
 
-        // ── Live metrics: real SSE first, simulation as fallback ──────────────
+        // ── Live metrics: real SSE only — no fake fallback ────────────────────
         function applyMetrics(m) {
             episode++;
             const tier = m.difficulty_tier ?? 1;
@@ -614,15 +612,32 @@
 
             renderTierBar(tier);
 
-            const errRate = (errorHistory.reduce((a, b) => a + b, 0)
-                              / errorHistory.length * 3.2).toFixed(1);
+            // Format error rate from cumulative errors / cumulative episodes
+            const errRate = errorHistory.length > 0
+                ? (errorHistory.filter(x => x > 0).length / errorHistory.length * 100).toFixed(1)
+                : '0.0';
             document.getElementById('errorGauge').textContent = errRate + '%';
+
+            // Latest-episode raw dump
+            const latest = document.getElementById('latestEpisode');
+            latest.classList.remove('empty-state');
+            latest.textContent = JSON.stringify(m, null, 2);
+
+            // Connection healthy → hide banner
+            document.getElementById('disconnectBanner').classList.remove('active');
         }
 
-        let sseFallbackTimer = null;
-        function startSimulationFallback() {
-            if (sseFallbackTimer) return;
-            sseFallbackTimer = setInterval(simulate, 1200);
+        function showDisconnected() {
+            document.getElementById('disconnectBanner').classList.add('active');
+            const dot = document.querySelector('.badge .dot');
+            const badge = document.querySelector('.badge');
+            if (dot) dot.style.background = 'var(--accent-red)';
+            if (badge) {
+                badge.style.color = 'var(--accent-red)';
+                badge.style.borderColor = 'rgba(239,68,68,0.3)';
+                badge.style.background = 'rgba(239,68,68,0.1)';
+                badge.lastChild.textContent = ' Disconnected';
+            }
         }
 
         let evtSource = null;
@@ -634,10 +649,10 @@
             };
             evtSource.onerror = () => {
                 evtSource.close();
-                startSimulationFallback();
+                showDisconnected();
             };
         } catch (_) {
-            startSimulationFallback();
+            showDisconnected();
         }
     </script>
 </body>

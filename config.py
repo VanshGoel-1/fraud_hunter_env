@@ -57,6 +57,7 @@ PUBLIC_ROUTE_PREFIXES: tuple[str, ...] = (
     "/openapi.json",
     "/dashboard",
     "/ui",
+    "/assets",
     "/metrics",
     "/fraud_hunter/health",
 )

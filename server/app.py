@@ -115,6 +115,14 @@ app.add_middleware(APIKeyMiddleware)
 # ── Custom web UI: mount web/index.html ──────────────────────────────────────
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+
+if _ASSETS_DIR.exists():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=str(_ASSETS_DIR)),
+        name="assets",
+    )
 
 if _WEB_DIR.exists():
     app.mount(

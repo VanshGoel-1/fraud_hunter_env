@@ -25,6 +25,7 @@ dependencies = [
     "PyPDF2>=3.0.0",
     "pytesseract>=0.3.10",
     "pandas>=2.0.0",
+    "matplotlib>=3.10.9",
 ]
 
 [project.optional-dependencies]
