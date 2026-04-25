@@ -36,13 +36,16 @@ from typing import Any, Optional
 from fraud_hunter_env.models import (
     ActionKind, ContradictionKind,
     CASE_DISMISSED_REWARD, CASE_WON_REWARD, CASE_PARTIAL_REWARD,
-    CONTRADICTION_REWARD, CODEACT_BONUS, COT_GROUNDED_BONUS,
-    COT_MISSING_PENALTY, DOC_CLAIM_MATCH_BONUS, DUPLICATE_QUERY_PENALTY,
+    CODEACT_BONUS, CODEACT_ROW_CAP,
+    COT_GROUNDED_BONUS, COT_GROUNDING_CAP, COT_MISSING_PENALTY, COT_TOKEN_THRESHOLD,
+    CONTRADICTION_REWARD, DOC_CLAIM_MATCH_BONUS, DUPLICATE_QUERY_PENALTY,
     EXTRACT_ENTITY_REWARD, FORMAT_GATE_PENALTY, FraudHunterAction,
     HALLUCINATED_ENTITY_PENALTY, LENGTH_PENALTY_PHASE_OUT_STEP,
     LENGTH_PENALTY_RATE, LINK_SHELL_REWARD, NPI_EXACT_MATCH_BONUS,
-    NPI_MISMATCH_PENALTY, OCR_RECALL_BONUS, PDF_CHAIN_MULTIPLIER,
-    PROOF_CHAIN_MULTIPLIER, STEP_DECAY, TYPOLOGY_MULTIPLIERS,
+    NPI_MISMATCH_PENALTY, OCR_RECALL_BONUS,
+    PARTIAL_WIN_THRESHOLD, PDF_CHAIN_MULTIPLIER,
+    PROOF_CHAIN_MULTIPLIER, SQL_ROW_BONUS_CAP, SQL_ROW_BONUS_RATE,
+    STEP_DECAY, TYPOLOGY_MULTIPLIERS,
 )
 
 from pathlib import Path
@@ -156,7 +159,7 @@ def score_cot(
     # Layer 4: Length penalty (phases out after step 20)
     if step_count <= LENGTH_PENALTY_PHASE_OUT_STEP:
         words = _WORD_RE.findall(think_trace)
-        excess = max(0, len(words) - 150)
+        excess = max(0, len(words) - COT_TOKEN_THRESHOLD)
         length_pen = LENGTH_PENALTY_RATE * excess
         if length_pen < 0:
             cot_reward += length_pen
@@ -167,7 +170,7 @@ def score_cot(
     cot_lower = think_trace.lower()
     grounded = sum(1 for n in real_names if n.lower() in cot_lower)
     if grounded > 0:
-        bonus = COT_GROUNDED_BONUS * min(grounded, 3)  # cap at 3x bonus
+        bonus = COT_GROUNDED_BONUS * min(grounded, COT_GROUNDING_CAP)
         cot_reward += bonus
         hits.append(f"cot_grounded={bonus:.1f}")
         feedback.append(f"cot_grounded({grounded}_entities)")
@@ -315,18 +318,19 @@ def grade(
             feedback_parts.append(f"sql_ok({rows}_rows)")
             # Bonus for productive SQL (returned rows)
             if rows > 0:
-                reward += min(rows * 0.5, 5.0)  # cap at +5.0
-                hits.append(f"sql_rows_bonus={min(rows * 0.5, 5.0):.1f}")
+                bonus = min(rows * SQL_ROW_BONUS_RATE, SQL_ROW_BONUS_CAP)
+                reward += bonus
+                hits.append(f"sql_rows_bonus={bonus:.1f}")
 
     elif action.kind == ActionKind.CODE_ACT:
-        stdout, err, rows = execute_code(action.python_code or "", case.conn, case_dir=str(case.db_path.parent))
+        stdout, err, rows = execute_code(action.python_code or "", case.conn, case_dir=str(case.case_dir))
         if err:
             tool_output = f"SANDBOX_ERROR:\n{err}"
             feedback_parts.append("codeact_error")
         else:
             tool_output = stdout or "(no output)"
             if rows > 0:
-                bonus = CODEACT_BONUS * min(rows, 5)  # cap at 5 rows
+                bonus = CODEACT_BONUS * min(rows, CODEACT_ROW_CAP)
                 reward += bonus
                 hits.append(f"codeact_bonus={bonus:.1f}")
             feedback_parts.append(f"codeact_ok({rows}_rows)")
@@ -561,7 +565,7 @@ def case_outcome(
         and gt_links.issubset(linked)
         and gt_ctr_norm.issubset(norm_ctr)
     )
-    partial = not won and total_gt > 0 and total_hit / total_gt >= 0.5
+    partial = not won and total_gt > 0 and total_hit / total_gt >= PARTIAL_WIN_THRESHOLD
 
     return won, partial
 

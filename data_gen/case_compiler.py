@@ -26,7 +26,6 @@ Quality primitives (kept from the previous CMS-only compiler):
 
 from __future__ import annotations
 
-import argparse
 import json
 import math
 import os
@@ -927,34 +926,5 @@ def _plant_foreign_affiliation(cur, rng, contractor_eid: str,
                 })))
     typologies.append("foreign_affiliation")
 
+# CLI lives in data_gen/build_case_bank.py — this module exposes the API only.
 
-# ── CLI ──────────────────────────────────────────────────────────────────────
-
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Generate multi-modal CMS SynPUF fraud cases (local, no external API).")
-    parser.add_argument("--tier", type=int, default=None, help="Difficulty tier 1-5")
-    parser.add_argument("--count", type=int, default=5, help="Cases per tier")
-    parser.add_argument("--outdir", type=str, default=None)
-    args = parser.parse_args()
-
-    root = Path(__file__).resolve().parents[1]
-    outdir = Path(args.outdir) if args.outdir else root / "data" / "case_bank"
-    outdir.mkdir(parents=True, exist_ok=True)
-
-    tiers = [args.tier] if args.tier else [1, 2, 3, 4, 5]
-    for tier in tiers:
-        tier_dir = outdir / f"tier_{tier}"
-        tier_dir.mkdir(exist_ok=True)
-        print(f"[generate] tier {tier}: {args.count} cases")
-        for _ in range(args.count):
-            seed = random.randint(0, 2**31)
-            case_id = f"t{tier}_{uuid.uuid4().hex[:8]}"
-            path = generate_multimodal_aks_case(tier_dir, case_id, tier=tier, rng_seed=seed)
-            print(f"  - {path.relative_to(outdir)}")
-    print(f"[done] case bank at {outdir}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

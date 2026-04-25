@@ -39,7 +39,6 @@ class FraudHunterEnv(EnvClient[FraudHunterAction, FraudHunterObservation, State]
             info=obs_data.get("info"),
             done=payload.get("done", False),
             reward=payload.get("reward"),
-            metadata=obs_data.get("metadata", {}),
         )
         return StepResult(
             observation=observation,

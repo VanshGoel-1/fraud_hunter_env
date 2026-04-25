@@ -15,34 +15,41 @@ to enable the agent to reason over its own prior discoveries.
 
 from __future__ import annotations
 
+import random
+import shutil
+import sqlite3
+import tempfile
+from pathlib import Path
+from typing import Any, Callable, Optional
 from uuid import uuid4
-from typing import Any, Optional
 
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-try:
-    from ..models import (
-        ActionKind, EpisodeMetrics,
-        FraudHunterAction, FraudHunterObservation,
-        MAX_EPISODE_STEPS, TYPOLOGY_MULTIPLIERS,
-    )
-except ImportError:
-    from models import (  # type: ignore
-        ActionKind, EpisodeMetrics,
-        FraudHunterAction, FraudHunterObservation,
-        MAX_EPISODE_STEPS, TYPOLOGY_MULTIPLIERS,
-    )
-
-from .data_loader import CaseBank, CaseHandle
-from .grader import grade, format_gate, GraderOutput, compute_agentic_recall
-from .difficulty import get_difficulty_manager
-from .sandbox import execute_code, execute_sql
-
-import tempfile
-import sqlite3
-from pathlib import Path
+from fraud_hunter_env.models import (
+    ActionKind,
+    FraudHunterAction,
+    FraudHunterObservation,
+    MAX_EPISODE_STEPS,
+)
 from fraud_hunter_env.data_gen.case_compiler import generate_multimodal_aks_case
+from fraud_hunter_env.server.data_loader import CaseHandle
+from fraud_hunter_env.server.difficulty import get_difficulty_manager
+from fraud_hunter_env.server.grader import GraderOutput, compute_agentic_recall, grade
+
+
+_DEFAULT_CASE_BANK = Path(__file__).resolve().parent.parent / "data" / "case_bank"
+
+
+def _bank_cases_for_tier(bank_dir: Path, tier: int) -> list[Path]:
+    """Return all pre-built case directories under bank_dir/tier_N that have a DB."""
+    tier_dir = bank_dir / f"tier_{tier}"
+    if not tier_dir.is_dir():
+        return []
+    return [
+        p for p in tier_dir.iterdir()
+        if p.is_dir() and (p / "medicare_records.db").is_file()
+    ]
 
 
 CASE_BRIEF_TEMPLATE = (
@@ -57,10 +64,19 @@ CASE_BRIEF_TEMPLATE = (
     "  query_medicare(beneficiary_id|claim_id) → claims / beneficiary records\n"
     "  sql_query(sql_statement) → raw SELECT on the case database\n"
     "  code_act(python_code)   → sandboxed Python with `conn` and `pd`\n"
+    "  ocr_document(pdf_path) → run OCR on a scanned_claims/*.pdf\n"
+    "  compare_doc_vs_claim(claim_id, extracted_fields) → contrast OCR vs claim row\n"
     "  extract_entity(name, kind, npi_code?) → flag an entity as fraudulent\n"
     "  link_shell(child_entity, parent_entity) → assert UBO ownership\n"
     "  claim_contradiction(evidence_a, evidence_b, contradiction_kind) → flag anomaly\n"
     "  submit_case(case_summary, confidence, typologies?) → terminate and seek conviction\n\n"
+    "Database tables: beneficiary_summary, carrier_claims, inpatient_claims,\n"
+    "  outpatient_claims, prescription_drug_events, corporate_registry,\n"
+    "  general_ledger, referral_payments, government_contracts, contract_invoices,\n"
+    "  contract_deliveries, loan_applications, payroll_records, foreign_affiliations,\n"
+    "  evidence_documents, ground_truth, case_metadata.\n"
+    "Off-database evidence: intercepted_comms/*.txt, scanned_claims/*.pdf — list via\n"
+    "  the sandbox-injected listdir()/path_join()/path_exists() helpers, or ocr_document.\n\n"
     "Fraud typologies: dead_patient_claim, duplicate_bill, upcoding, unbundling,\n"
     "  aks_violation, off_label_marketing, double_billing, cost_pricing_fraud,\n"
     "  product_substitution, ppp_fraud, foreign_affiliation, phantom_beneficiary\n\n"
@@ -74,8 +90,18 @@ class FraudHunterEnvironment(Environment):
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
-    def __init__(self, case_bank_dir: str | None = None, rng_seed: int | None = None):
+    def __init__(
+        self,
+        case_bank_dir: str | None = None,
+        rng_seed: int | None = None,
+        on_episode_end: Optional[Callable[[dict], None]] = None,
+    ):
         self._sandbox_dir = tempfile.TemporaryDirectory()
+        bank = Path(case_bank_dir) if case_bank_dir else _DEFAULT_CASE_BANK
+        self._bank_dir: Optional[Path] = bank if bank.is_dir() else None
+        self._rng_seed = rng_seed
+        self._rng = random.Random(rng_seed)
+        self._on_episode_end = on_episode_end
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._case: Optional[CaseHandle] = None
         self._extracted: set[str] = set()
@@ -130,13 +156,28 @@ class FraudHunterEnvironment(Environment):
 
         # Get current tier from RLVE
         self._difficulty_tier = self._diff_mgr.get_tier(self._session_id)
-        
-        # On-the-fly generation directly into the sandbox workspace
-        case_id = f"case_{uuid4().hex[:8]}"
+
         sandbox_path = Path(self._sandbox_dir.name)
-        generate_multimodal_aks_case(sandbox_path, case_id, self._difficulty_tier)
-        
-        # Connect to the generated sandbox database
+
+        # Prefer pre-built bank when available; fall back to on-the-fly generation.
+        bank_pick: Optional[Path] = None
+        if self._bank_dir is not None:
+            for try_tier in (self._difficulty_tier, *range(self._difficulty_tier - 1, 0, -1)):
+                candidates = _bank_cases_for_tier(self._bank_dir, try_tier)
+                if candidates:
+                    bank_pick = self._rng.choice(candidates)
+                    break
+
+        if bank_pick is not None:
+            case_id = bank_pick.name
+            dest = sandbox_path / case_id
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(bank_pick, dest)
+        else:
+            case_id = f"case_{uuid4().hex[:8]}"
+            generate_multimodal_aks_case(sandbox_path, case_id, self._difficulty_tier)
+
         db_path = sandbox_path / case_id / "medicare_records.db"
         conn = sqlite3.connect(str(db_path))
         self._case = CaseHandle(case_id=case_id, db_path=db_path, conn=conn, tier=self._difficulty_tier)
@@ -175,20 +216,29 @@ class FraudHunterEnvironment(Environment):
         self._state.step_count += 1
         self._total_steps += 1
 
-        # Track which tables are being queried (for agentic recall)
+        # Track which tables/sources are being queried (for agentic recall).
         if action.kind == ActionKind.QUERY_CORPORATE:
             self._queried_tables.add("corporate_registry")
         elif action.kind == ActionKind.QUERY_MEDICARE:
-            self._queried_tables.update({"medicare_claims", "medicare_beneficiaries"})
+            self._queried_tables.update({"carrier_claims", "beneficiary_summary"})
+        elif action.kind in (ActionKind.OCR_DOCUMENT, ActionKind.COMPARE_DOC_VS_CLAIM):
+            self._queried_tables.update({"scanned_claims", "evidence_documents"})
         elif action.kind in (ActionKind.SQL_QUERY, ActionKind.CODE_ACT):
-            # Infer queried tables from SQL or code content
             code_or_sql = (action.sql_statement or action.python_code or "").lower()
-            for tbl in ["general_ledger", "referral_payments", "government_contracts",
-                         "contract_invoices", "lab_results", "loan_applications",
-                         "corporate_registry", "providers", "medicare_claims",
-                         "medicare_beneficiaries"]:
+            for tbl in [
+                "beneficiary_summary", "carrier_claims", "inpatient_claims",
+                "outpatient_claims", "prescription_drug_events",
+                "corporate_registry",
+                "general_ledger", "referral_payments",
+                "government_contracts", "contract_invoices", "contract_deliveries",
+                "loan_applications", "payroll_records", "foreign_affiliations",
+                "evidence_documents",
+            ]:
                 if tbl in code_or_sql:
                     self._queried_tables.add(tbl)
+            for path_token in ("intercepted_comms", "scanned_claims"):
+                if path_token in code_or_sql:
+                    self._queried_tables.add(path_token)
 
         # CoT tracking
         if action.think_trace:
@@ -226,6 +276,20 @@ class FraudHunterEnvironment(Environment):
         budget_remaining = max(0, MAX_EPISODE_STEPS - self._state.step_count)
         done = out.done or budget_remaining == 0
 
+        # Emit terminal-step metrics so the API layer can populate /leaderboard
+        # and the SSE /metrics stream. Fired here (not at next reset) so the
+        # last episode of a session is never lost.
+        if done and self._on_episode_end is not None:
+            try:
+                self._on_episode_end({
+                    "case_id": self._case.case_id,
+                    "session_id": self._session_id,
+                    **self._build_metrics(),
+                })
+            except Exception:
+                # Metrics emission must never break an episode.
+                pass
+
         return FraudHunterObservation(
             tool_output=out.tool_output,
             grader_feedback=out.feedback,
@@ -245,15 +309,3 @@ class FraudHunterEnvironment(Environment):
     @property
     def state(self) -> State:
         return self._state
-
-    @property
-    def extracted(self) -> set[str]:
-        return self._extracted
-
-    @property
-    def linked(self) -> set[tuple[str, str]]:
-        return self._linked
-
-    @property
-    def contradictions(self) -> set[tuple[str, str]]:
-        return self._contradictions

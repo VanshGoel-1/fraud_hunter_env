@@ -17,7 +17,6 @@ Supports:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -65,19 +64,6 @@ class ContradictionKind(str, Enum):
     PPP_FRAUD           = "ppp_fraud"         # misrepresented employee count
     FOREIGN_AFFILIATION = "foreign_affiliation"  # undisclosed foreign govt ties
 
-
-# ─── Episode Metrics (tracked in environment, returned in observation) ─────────
-
-@dataclass
-class EpisodeMetrics:
-    """Per-episode diagnostics for training monitoring and CoT-Pass@K scoring."""
-    agentic_recall: float = 0.0          # tables/entities queried / gold required
-    cot_validity_score: float = 0.0      # fraction of steps with valid <think> blocks
-    format_error_count: int = 0          # cumulative format gate violations
-    hallucination_count: int = 0         # actions on non-existent entities
-    proof_chain_complete: bool = False   # full causal chain from entity → link → contradiction
-    steps_to_first_hit: int = -1         # steps until first positive reward
-    typologies_found: List[str] = field(default_factory=list)
 
 
 # ─── Action Schema ─────────────────────────────────────────────────────────────
@@ -305,3 +291,16 @@ TYPOLOGY_MULTIPLIERS: Dict[str, float] = {
 }
 
 MAX_EPISODE_STEPS = 60  # increased from 50 to give room for CoT + CodeAct
+
+
+# ─── Grader tunables (named constants, used by server/grader.py) ──────────
+# Keeping these here (rather than inline in grader.py) means a single import
+# site for tests / training scripts that want to ablate reward shaping.
+
+COT_GROUNDING_CAP = 3            # max grounded-fact bonuses scored per step
+COT_TOKEN_THRESHOLD = 150        # tokens above which length-penalty kicks in
+SQL_ROW_BONUS_RATE = 0.5         # reward per row returned by sql_query
+SQL_ROW_BONUS_CAP = 5.0          # cap on sql_query row bonus per step
+CODEACT_ROW_CAP = 5              # max rows counted toward CODEACT_BONUS per step
+PARTIAL_WIN_THRESHOLD = 0.5      # fraction of gold typologies for partial credit
+

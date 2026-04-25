@@ -12,7 +12,6 @@ Supports CMS SynPUF schemas:
 from __future__ import annotations
 
 import json
-import random
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +28,11 @@ class CaseHandle:
     conn: sqlite3.Connection
     seen_queries: set[str] = field(default_factory=set)
     tier: int = 1
+
+    @property
+    def case_dir(self) -> Path:
+        """Directory holding medicare_records.db and the evidence subfolders."""
+        return self.db_path.parent
 
     def close(self) -> None:
         try:
@@ -122,40 +126,6 @@ class CaseHandle:
             lines.append(f"  carrier_claim: id={c[0]} date={c[1]} amt={c[2]} hcpcs={c[3]}")
             
         return "\n".join(lines)
-
-
-class CaseBank:
-    """Samples case-bank .db files, supporting tiered directories for RLVE."""
-
-    def __init__(self, case_dir: Path | str = DEFAULT_CASE_BANK_DIR, rng_seed: Optional[int] = None):
-        self.case_dir = Path(case_dir)
-        self._rng = random.Random(rng_seed)
-
-    def available(self, tier: Optional[int] = None) -> list[Path]:
-        if not self.case_dir.exists():
-            return []
-        if tier is not None:
-            tier_dir = self.case_dir / f"tier_{tier}"
-            if tier_dir.exists():
-                return sorted(tier_dir.glob("*.db"))
-        all_dbs = sorted(self.case_dir.glob("**/*.db"))
-        return list(set(all_dbs))
-
-    def sample(self, tier: Optional[int] = None) -> CaseHandle:
-        cases = self.available(tier)
-        if not cases:
-            if tier and tier > 1:
-                return self.sample(tier - 1)
-            return _demo_case()
-        path = self._rng.choice(cases)
-        conn = sqlite3.connect(str(path))
-        try:
-            cur = conn.execute("SELECT value FROM case_metadata WHERE key='tier'")
-            row = cur.fetchone()
-            db_tier = int(row[0]) if row else (tier or 1)
-        except Exception:
-            db_tier = tier or 1
-        return CaseHandle(case_id=path.stem, db_path=path, conn=conn, tier=db_tier)
 
 
 def _demo_case() -> CaseHandle:

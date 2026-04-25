@@ -21,6 +21,7 @@ from __future__ import annotations
 import ast
 import io
 import json
+import os
 import sqlite3
 import threading
 import traceback
@@ -149,10 +150,10 @@ def execute_code(
         - error_message: None on success, traceback string on error
         - rows_returned: number of DataFrame rows detected in output (for bonus scoring)
     """
-    import os
-    if case_dir:
-        os.chdir(case_dir)
-        
+    # Note: we deliberately do NOT call os.chdir here. The server is
+    # multi-tenant and changing CWD races across concurrent sessions; all
+    # filesystem helpers below take `case_dir` as the explicit base.
+
     safety_err = _check_code_safety(code)
     if safety_err:
         return "", f"SECURITY_VIOLATION: {safety_err}", 0
@@ -174,23 +175,42 @@ def execute_code(
     # Narrow filesystem helpers: only within the case directory subtree. This
     # lets the agent enumerate intercepted_comms/ and scanned_claims/ without
     # needing `import os` (which the forbidden-pattern scanner would reject).
+    _case_base = os.path.abspath(case_dir) if case_dir else None
+
+    def _confined(target: str) -> str:
+        if _case_base is None:
+            raise PermissionError("filesystem access requires a case_dir")
+        resolved = os.path.abspath(
+            target if os.path.isabs(target) else os.path.join(_case_base, target)
+        )
+        if not (resolved == _case_base or resolved.startswith(_case_base + os.sep)):
+            raise PermissionError(f"path escapes case directory: {target!r}")
+        return resolved
+
     def _safe_listdir(subdir: str = ".") -> list[str]:
-        base = os.path.abspath(case_dir or os.getcwd())
-        target = os.path.abspath(os.path.join(base, subdir))
-        if not (target == base or target.startswith(base + os.sep)):
-            raise PermissionError(f"listdir outside case directory: {subdir!r}")
-        return sorted(os.listdir(target))
+        return sorted(os.listdir(_confined(subdir)))
 
     def _safe_path_join(*parts: str) -> str:
-        return os.path.join(*parts)
+        # Anchor relative compositions at case_dir so paths work without
+        # depending on the process CWD (which we deliberately do not change).
+        if not parts:
+            return _case_base or ""
+        first = parts[0]
+        if os.path.isabs(first) or _case_base is None:
+            return os.path.join(*parts)
+        return os.path.join(_case_base, *parts)
 
     def _safe_path_exists(path: str) -> bool:
-        base = os.path.abspath(case_dir or os.getcwd())
-        target = os.path.abspath(path if os.path.isabs(path)
-                                 else os.path.join(base, path))
-        if not (target == base or target.startswith(base + os.sep)):
+        try:
+            return os.path.exists(_confined(path))
+        except PermissionError:
             return False
-        return os.path.exists(target)
+
+    def _safe_open(path: str, mode: str = "r", *args, **kwargs):
+        # Read-only access, confined to case_dir. No append/write modes.
+        if any(c in mode for c in ("w", "a", "+", "x")):
+            raise PermissionError(f"write modes disallowed in sandbox: {mode!r}")
+        return open(_confined(path), mode, *args, **kwargs)  # noqa: SIM115
 
     # Pre-injected stdlib modules — pure-python, no I/O, agent doesn't need to
     # import them (and import statements are now rejected by the AST check).
@@ -209,7 +229,7 @@ def execute_code(
         "pdfplumber": pdfplumber,
         "pytesseract": pytesseract,
         "Image": Image,
-        "open": open,                     # Allow reading files (CWD-confined)
+        "open": _safe_open,               # Read-only, case-dir-confined
         "listdir": _safe_listdir,         # Enumerate evidence dirs
         "path_join": _safe_path_join,     # Compose relative paths
         "path_exists": _safe_path_exists, # Test evidence paths

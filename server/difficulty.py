@@ -16,6 +16,7 @@ Tier 5 (Elite):  Full multi-sector fraud (healthcare+contracting+PPP), 4-layer s
 from __future__ import annotations
 
 import statistics
+import threading
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Deque
@@ -78,11 +79,16 @@ class DifficultyManager:
 
     def __init__(self) -> None:
         self._profiles: dict[str, AgentProfile] = {}
+        # Single-process lock; protects against concurrent /reset and /step
+        # mutations under uvicorn workers=1. Multi-worker deployments still
+        # need an external store (Redis) — see Phase 9.5 follow-up.
+        self._lock = threading.Lock()
 
     def get_or_create(self, session_id: str) -> AgentProfile:
-        if session_id not in self._profiles:
-            self._profiles[session_id] = AgentProfile(session_id=session_id)
-        return self._profiles[session_id]
+        with self._lock:
+            if session_id not in self._profiles:
+                self._profiles[session_id] = AgentProfile(session_id=session_id)
+            return self._profiles[session_id]
 
     def get_tier(self, session_id: str) -> int:
         return self.get_or_create(session_id).current_tier
@@ -95,8 +101,9 @@ class DifficultyManager:
     ) -> int:
         """Record episode result and return the NEW tier for next episode."""
         profile = self.get_or_create(session_id)
-        profile.record_episode(total_reward, format_errors)
-        return profile.current_tier
+        with self._lock:
+            profile.record_episode(total_reward, format_errors)
+            return profile.current_tier
 
     def get_stats(self, session_id: str) -> dict:
         profile = self.get_or_create(session_id)

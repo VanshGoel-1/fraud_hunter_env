@@ -9,7 +9,6 @@ from .models import (
     ActionKind,
     ContradictionKind,
     EntityKind,
-    EpisodeMetrics,
     FraudHunterAction,
     FraudHunterObservation,
 )
@@ -19,7 +18,6 @@ __all__ = [
     "ActionKind",
     "ContradictionKind",
     "EntityKind",
-    "EpisodeMetrics",
     "FraudHunterAction",
     "FraudHunterObservation",
     "FraudHunterEnv",

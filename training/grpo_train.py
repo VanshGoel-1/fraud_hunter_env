@@ -86,29 +86,34 @@ def environment_reward(prompts: list[str], completions: list[str], **kwargs) -> 
 def _parse_actions_from_completion(text: str) -> list[dict]:
     """
     Extract JSON action payloads from an LLM completion.
-    Handles <think>...</think> blocks and JSON interleaved text.
+    Handles <think>...</think> blocks AND nested JSON (the previous greedy
+    regex `\{[^{}]+\}` silently dropped any object containing a sub-object,
+    e.g. extract_entity payloads with `extracted_kind` enums or compare_doc
+    actions with `extracted_fields`).
     """
     import re
-    actions = []
-    # Find all JSON-like blocks
-    json_pattern = re.compile(r'\{[^{}]+\}')
     think_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
-
-    # Extract think traces
     think_traces = think_pattern.findall(text)
     think_idx = 0
 
-    for match in json_pattern.finditer(text):
-        try:
-            payload = json.loads(match.group())
-            if "kind" in payload:
-                # Attach the think trace if available
-                if think_idx < len(think_traces):
-                    payload["think_trace"] = think_traces[think_idx]
-                    think_idx += 1
-                actions.append(payload)
-        except json.JSONDecodeError:
+    actions: list[dict] = []
+    decoder = json.JSONDecoder()
+    i = 0
+    while i < len(text):
+        if text[i] != "{":
+            i += 1
             continue
+        try:
+            payload, end = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            i += 1
+            continue
+        if isinstance(payload, dict) and "kind" in payload:
+            if think_idx < len(think_traces):
+                payload["think_trace"] = think_traces[think_idx]
+                think_idx += 1
+            actions.append(payload)
+        i = end
     return actions
 
 
@@ -254,8 +259,16 @@ def main():
     )
 
     print("Starting GRPO training (DAPO loss, clip-higher, zero KL)...")
-    # trainer.train()  # Uncomment to run on GPU
-    print("Training setup verified. Uncomment trainer.train() to execute.")
+    trainer.train()
+
+    # Post-training diagnostic: CoT-Pass@K on a sampled completion batch.
+    try:
+        sample_completions = trainer.sample(num_samples=8) if hasattr(trainer, "sample") else []
+    except Exception:
+        sample_completions = []
+    if sample_completions:
+        score = cot_pass_at_k([c.get("completion", "") for c in sample_completions], k=8)
+        print(f"[eval] cot_pass_at_8 = {score:.3f}")
 
 
 if __name__ == "__main__":
