@@ -113,18 +113,34 @@ app.add_middleware(APIKeyMiddleware)
 
 
 # ── Custom web UI: mount web/index.html ──────────────────────────────────────
+# When installed into site-packages, __file__ is under the wheel and `web/`
+# (a top-level repo folder) is NOT alongside server/. Try several candidate
+# roots so the dashboard works in: editable install, wheel install, Docker
+# (COPY . /app/env), and the openenv-base build.
+def _find_dir(name: str) -> Path | None:
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parent.parent / name,                    # editable / flat layout
+        here.parent.parent.parent / name,             # one level up (src/)
+        Path("/app/env") / name,                      # Dockerfile layout
+        Path.cwd() / name,                            # CWD fallback
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
 
-_WEB_DIR = Path(__file__).resolve().parent.parent / "web"
-_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+_WEB_DIR = _find_dir("web")
+_ASSETS_DIR = _find_dir("assets")
 
-if _ASSETS_DIR.exists():
+if _ASSETS_DIR is not None:
     app.mount(
         "/assets",
         StaticFiles(directory=str(_ASSETS_DIR)),
         name="assets",
     )
 
-if _WEB_DIR.exists():
+if _WEB_DIR is not None:
     app.mount(
         "/dashboard",
         StaticFiles(directory=str(_WEB_DIR), html=True),

@@ -80,6 +80,7 @@ data/case_bank/**/intercepted_comms/
 
 # Internal hackathon scratch (kept off GitHub / HF Space)
 /dataset_ideas/
+/data
 /hackathon_docs/
 /docs/
 /.claude/

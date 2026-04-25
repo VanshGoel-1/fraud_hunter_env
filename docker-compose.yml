@@ -1,0 +1,35 @@
+# docker-compose.yml — local one-shot bring-up for the Fraud Hunter env.
+#
+#   docker compose up --build      # build image + start container in foreground
+#   docker compose up -d --build   # same, detached
+#   docker compose down            # stop + remove
+#
+# NOTE: Hugging Face Spaces deploys the Dockerfile directly and IGNORES this
+# file. This compose stack is for local dev, judge demos, and CI smoke tests.
+
+services:
+  fraud-hunter-env:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fraud-hunter-env:latest
+    container_name: fraud-hunter-env
+    ports:
+      - "8000:8000"
+    environment:
+      # Optional: set FRAUD_HUNTER_API_KEY to enable API-key auth in front of
+      # /reset, /step, /state. Leave unset for an open local sandbox.
+      # FRAUD_HUNTER_API_KEY: "change-me"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      # Live-mount the case bank so you don't rebuild when the dataset changes.
+      - ./data/case_bank:/app/env/data/case_bank:ro
+      # Surface freshly-generated eval artifacts to the dashboard without rebuild.
+      - ./assets:/app/env/assets:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
