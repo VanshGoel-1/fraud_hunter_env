@@ -103,3 +103,4 @@ logs/
 tmp/
 *.tmp
 *.bak
+*.pdf
