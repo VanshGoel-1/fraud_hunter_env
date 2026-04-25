@@ -86,23 +86,24 @@ def environment_reward(prompts: list[str], completions: list[str], **kwargs) -> 
 def _parse_actions_from_completion(text: str) -> list[dict]:
     """
     Extract JSON action payloads from an LLM completion.
-    Handles <think>...</think> blocks AND nested JSON (the previous greedy
-    regex `\{[^{}]+\}` silently dropped any object containing a sub-object,
-    e.g. extract_entity payloads with `extracted_kind` enums or compare_doc
-    actions with `extracted_fields`).
+    Handles <think>...</think> blocks and JSON interleaved text, including
+    nested objects like extracted_fields={...} (which the previous
+    `\\{[^{}]+\\}` regex would silently miss).
     """
     import re
+    actions: list[dict] = []
     think_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
     think_traces = think_pattern.findall(text)
     think_idx = 0
 
-    actions: list[dict] = []
     decoder = json.JSONDecoder()
     i = 0
-    while i < len(text):
-        if text[i] != "{":
-            i += 1
-            continue
+    n = len(text)
+    while i < n:
+        # Find the next JSON object opening brace.
+        i = text.find("{", i)
+        if i == -1:
+            break
         try:
             payload, end = decoder.raw_decode(text, i)
         except json.JSONDecodeError:
@@ -119,34 +120,10 @@ def _parse_actions_from_completion(text: str) -> list[dict]:
 
 # ── Gibberish Detection ──────────────────────────────────────────────────────
 
-def gibberish_filter(completions: list[str], logprobs: list[list[float]]) -> list[bool]:
-    """
-    Returns a mask of valid completions (True = keep, False = reject).
-    A completion is rejected if >10% of its tokens have logprob < -15.
-    """
-    masks = []
-    for lps in logprobs:
-        if not lps:
-            masks.append(True)
-            continue
-        rare_count = sum(1 for lp in lps if lp < -15)
-        masks.append(rare_count / len(lps) < 0.10)
-    return masks
-
-
-# ── Rejection Sampling (Iterative Self-Bootstrapping) ─────────────────────────
-
-def rejection_sample(
-    episodes: list[dict],
-    top_fraction: float = 0.3,
-) -> list[dict]:
-    """
-    Filter top-K% episodes by total reward.
-    Returns the best episodes for SFT data generation.
-    """
-    sorted_eps = sorted(episodes, key=lambda e: e["total_reward"], reverse=True)
-    cutoff = max(1, int(len(sorted_eps) * top_fraction))
-    return sorted_eps[:cutoff]
+# NOTE: gibberish_filter() and rejection_sample() were removed in the
+# Phase-9 refactor. They were never wired into the GRPOTrainer loop and the
+# gibberish_filter signature did not match TRL's reward-function contract.
+# If you need either, re-derive them in an external eval/SFT script.
 
 
 # ── CoT-Pass@K Metric ────────────────────────────────────────────────────────
@@ -259,16 +236,13 @@ def main():
     )
 
     print("Starting GRPO training (DAPO loss, clip-higher, zero KL)...")
-    trainer.train()
-
-    # Post-training diagnostic: CoT-Pass@K on a sampled completion batch.
-    try:
-        sample_completions = trainer.sample(num_samples=8) if hasattr(trainer, "sample") else []
-    except Exception:
-        sample_completions = []
-    if sample_completions:
-        score = cot_pass_at_k([c.get("completion", "") for c in sample_completions], k=8)
-        print(f"[eval] cot_pass_at_8 = {score:.3f}")
+    # Set FRAUD_HUNTER_TRAIN=1 (e.g. on a GPU host) to actually run training.
+    # CPU/no-GPU defaults to a no-op so this script stays import-safe.
+    if os.environ.get("FRAUD_HUNTER_TRAIN") == "1":
+        trainer.train()
+        print(f"Training complete. Checkpoints in {OUTPUT_DIR}/")
+    else:
+        print("Training setup verified. Set FRAUD_HUNTER_TRAIN=1 to execute.")
 
 
 if __name__ == "__main__":

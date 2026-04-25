@@ -291,16 +291,3 @@ TYPOLOGY_MULTIPLIERS: Dict[str, float] = {
 }
 
 MAX_EPISODE_STEPS = 60  # increased from 50 to give room for CoT + CodeAct
-
-
-# ─── Grader tunables (named constants, used by server/grader.py) ──────────
-# Keeping these here (rather than inline in grader.py) means a single import
-# site for tests / training scripts that want to ablate reward shaping.
-
-COT_GROUNDING_CAP = 3            # max grounded-fact bonuses scored per step
-COT_TOKEN_THRESHOLD = 150        # tokens above which length-penalty kicks in
-SQL_ROW_BONUS_RATE = 0.5         # reward per row returned by sql_query
-SQL_ROW_BONUS_CAP = 5.0          # cap on sql_query row bonus per step
-CODEACT_ROW_CAP = 5              # max rows counted toward CODEACT_BONUS per step
-PARTIAL_WIN_THRESHOLD = 0.5      # fraction of gold typologies for partial credit
-

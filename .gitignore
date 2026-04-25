@@ -1,36 +1,105 @@
-# Byte-compiled / optimized / DLL files
+# ─── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.pyd
 
-# Distribution / packaging
+# ─── Packaging / build ────────────────────────────────────────────────────────
 build/
 dist/
 *.egg-info/
 .eggs/
+pip-wheel-metadata/
+MANIFEST
 
-# Unit test / coverage reports
-.coverage
+# ─── Test / coverage / type-check caches ──────────────────────────────────────
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
 
-# Environments
+# ─── Virtual environments ─────────────────────────────────────────────────────
 .env
+.env.*
 .venv
-env/
 venv/
+env/
+ENV/
+.python-version
 
-# IDEs
-.vscode/
-.idea/
-*.swp
+# ─── Notebooks ────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.nbconvert.ipynb
 
-# Project Specific
-# (Removed ignores for data so datasets can be pushed to Hugging Face)
-/dataset_ideas
-/hackathon_docs
-/docs
+# ─── ML / training artifacts ──────────────────────────────────────────────────
+outputs/
+checkpoints/
+runs/
+wandb/
+mlruns/
+lightning_logs/
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.gguf
+*.onnx
+
+# Hugging Face / Transformers / Datasets caches
+.cache/
+~/.cache/huggingface/
+hf_cache/
+.hf_cache/
+unsloth_compiled_cache/
+.vllm/
+
+# ─── Repo-specific data ───────────────────────────────────────────────────────
+# Ship the compiled per-case SQLite bank (data/case_bank/) and the eval plots
+# (assets/) — they are part of the submission. Ignore the raw CMS CSVs,
+# the standalone research notebooks, and any local-only docs.
+
+# Raw public-domain CMS CSVs are huge (multi-GB) — never commit them.
+/data/All Beneficiary Years/
+/data/All FFS Claims/
+/data/pde.csv
+/data/raw/
 /data
 
-research_and_eda.ipynb
+# Generated PDF evidence inside per-case dirs gets large — ignore by glob,
+# but keep the .db files which are the actual training signal.
+data/case_bank/**/scanned_claims/
+data/case_bank/**/intercepted_comms/
+
+# Internal hackathon scratch (kept off GitHub / HF Space)
+/dataset_ideas/
+/hackathon_docs/
+/docs/
+/.claude/
 CLAUDE.md
-/.claude
+research_and_eda.ipynb
+
+# ─── OS / editor noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+
+# ─── Logs / temp ──────────────────────────────────────────────────────────────
+*.log
+logs/
+tmp/
+*.tmp
+*.bak

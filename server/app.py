@@ -19,9 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import time
-from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -33,89 +30,81 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from openenv.core.env_server import create_app
 
+from fraud_hunter_env import config
 from fraud_hunter_env.models import FraudHunterAction, FraudHunterObservation
 from fraud_hunter_env.server.fraud_hunter_env_environment import FraudHunterEnvironment
+from fraud_hunter_env.server.metrics_bus import InMemoryMetricsBus
 
 
 # ── Episode metrics store (in-memory, shared across all sessions) ────────────
-# Defined before `create_app` so the env factory can close over the callback.
+# NOTE: This is per-worker. For multi-worker uvicorn, migrate to Redis (Phase 9.5).
 
-_episode_log: deque[dict[str, Any]] = deque(maxlen=500)
-_sse_queues: list[asyncio.Queue] = []
+metrics_bus = InMemoryMetricsBus()
 
 
 def record_episode_metrics(metrics: dict[str, Any]) -> None:
-    """Hook the environment calls after each terminal step to broadcast."""
-    metrics["timestamp"] = time.time()
-    _episode_log.append(metrics)
-    for q in list(_sse_queues):
-        try:
-            q.put_nowait(metrics)
-        except asyncio.QueueFull:
-            pass
+    """Backwards-compatible alias — forwards to the new MetricsBus."""
+    metrics_bus.record(metrics)
 
 
 # ── OpenEnv-compliant FastAPI app (provides /ws, /reset, /step, /state) ──────
+# Wire `on_episode_end` so terminal-step metrics flow into _episode_log + SSE.
 
 app = create_app(
-    env=lambda: FraudHunterEnvironment(on_episode_end=record_episode_metrics),
+    env=lambda: FraudHunterEnvironment(on_episode_end=metrics_bus.record),
     action_cls=FraudHunterAction,
     observation_cls=FraudHunterObservation,
     env_name="fraud_hunter_env",
 )
 
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
-# ALLOWED_ORIGINS is a comma-separated list. Default `*` keeps local dev
-# frictionless; production deployments must set this explicitly.
-_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
+# ── CORS allowlist (env-driven) ──────────────────────────────────────────────
+# Defaults are dev-friendly; tighten via ALLOWED_ORIGINS="https://a.com,https://b.com".
+
+_DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000"
+_allowed_origins = config.allowed_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins,
-    allow_credentials=False,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_headers=["*"],
 )
 
 
-# ── API-key gate ─────────────────────────────────────────────────────────────
-# FRAUD_HUNTER_API_KEYS is a comma-separated list of valid keys. When unset the
-# gate is permissive (dev mode). When set, every non-public path requires
-# X-API-Key.
+# ── API-key authentication (env-driven) ──────────────────────────────────────
+# Cache keys at module-load time. To rotate, restart the server.
+# Public prefixes (health, docs, dashboard, metrics SSE) bypass auth so the
+# UI/operators can probe the service without a key.
 
-_PUBLIC_PATH_PREFIXES = (
-    "/health", "/docs", "/redoc", "/openapi.json",
-    "/dashboard", "/ui", "/metrics", "/fraud_hunter/health",
-)
+_PUBLIC_PREFIXES = config.PUBLIC_ROUTE_PREFIXES
 
 
 def _load_api_keys() -> set[str]:
-    raw = os.environ.get("FRAUD_HUNTER_API_KEYS", "")
-    return {k.strip() for k in raw.split(",") if k.strip()}
+    """Backwards-compatible alias — forwards to fraud_hunter_env.config."""
+    return config.api_keys()
 
 
-# Cached at module import; restart the server to rotate keys.
-_API_KEYS: set[str] = _load_api_keys()
+_API_KEYS: set[str] = config.api_keys()
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
-    """Reject requests missing a valid X-API-Key when keys are configured."""
+    """Enforce X-API-Key on all non-public, non-WS HTTP routes."""
 
     async def dispatch(self, request: Request, call_next):
-        if not _API_KEYS:
-            return await call_next(request)
-        # CORS preflights never carry custom headers; let them through so the
-        # CORS middleware can answer with the appropriate Allow-* headers.
-        if request.method == "OPTIONS":
-            return await call_next(request)
-        path = request.url.path
-        if any(path.startswith(p) for p in _PUBLIC_PATH_PREFIXES):
-            return await call_next(request)
-        # WebSocket auth happens at handshake — Starlette routes ws via scope.
+        # Never authenticate WebSocket frames or CORS preflight here.
         if request.scope.get("type") == "websocket":
             return await call_next(request)
-        provided = request.headers.get("X-API-Key", "")
-        if provided not in _API_KEYS:
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        # If no keys are configured, auth is disabled (dev mode).
+        if not _API_KEYS:
+            return await call_next(request)
+        path = request.url.path
+        if any(path == p or path.startswith(p + "/") or path == p for p in _PUBLIC_PREFIXES):
+            return await call_next(request)
+        provided = request.headers.get("x-api-key")
+        if not provided or provided not in _API_KEYS:
             return JSONResponse({"detail": "invalid or missing X-API-Key"}, status_code=401)
         return await call_next(request)
 
@@ -155,8 +144,7 @@ else:
 @app.get("/metrics")
 async def metrics_sse():
     """SSE endpoint: streams episode metrics as they arrive."""
-    queue: asyncio.Queue = asyncio.Queue(maxsize=50)
-    _sse_queues.append(queue)
+    queue = metrics_bus.subscribe()
 
     async def event_generator():
         try:
@@ -166,8 +154,7 @@ async def metrics_sse():
         except asyncio.CancelledError:
             pass
         finally:
-            if queue in _sse_queues:
-                _sse_queues.remove(queue)
+            metrics_bus.unsubscribe(queue)
 
     return StreamingResponse(
         event_generator(),
@@ -181,10 +168,7 @@ async def metrics_sse():
 @app.get("/leaderboard")
 async def leaderboard():
     """Top 10 episodes by total reward."""
-    sorted_eps = sorted(
-        _episode_log, key=lambda e: e.get("episode_reward", 0), reverse=True
-    )
-    return sorted_eps[:10]
+    return metrics_bus.top_by("episode_reward", limit=10)
 
 
 # ── Dashboard-specific health (openenv-core already registers /health) ──────
@@ -193,8 +177,8 @@ async def leaderboard():
 async def fraud_hunter_health():
     return {
         "status": "healthy",
-        "episodes_logged": len(_episode_log),
-        "sse_clients": len(_sse_queues),
+        "episodes_logged": metrics_bus.episode_count(),
+        "sse_clients": metrics_bus.subscriber_count(),
     }
 
 
@@ -203,8 +187,8 @@ def main():
 
     uvicorn.run(
         "fraud_hunter_env.server.app:app",
-        host="0.0.0.0",
-        port=8000,
+        host=config.server_host(),
+        port=config.server_port(),
         reload=False,
     )
 

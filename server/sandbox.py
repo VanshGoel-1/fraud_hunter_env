@@ -149,11 +149,12 @@ def execute_code(
         - stdout_output: captured print() output, capped at _MAX_OUTPUT_CHARS
         - error_message: None on success, traceback string on error
         - rows_returned: number of DataFrame rows detected in output (for bonus scoring)
-    """
-    # Note: we deliberately do NOT call os.chdir here. The server is
-    # multi-tenant and changing CWD races across concurrent sessions; all
-    # filesystem helpers below take `case_dir` as the explicit base.
 
+    Path-confinement: all filesystem helpers (`open`, `listdir`, `path_exists`)
+    resolve relative paths against `case_dir` (an absolute path). The sandbox
+    NEVER calls os.chdir() — that is a process-wide side effect that races
+    across concurrent sessions.
+    """
     safety_err = _check_code_safety(code)
     if safety_err:
         return "", f"SECURITY_VIOLATION: {safety_err}", 0
@@ -175,42 +176,50 @@ def execute_code(
     # Narrow filesystem helpers: only within the case directory subtree. This
     # lets the agent enumerate intercepted_comms/ and scanned_claims/ without
     # needing `import os` (which the forbidden-pattern scanner would reject).
-    _case_base = os.path.abspath(case_dir) if case_dir else None
+    # `case_dir` MUST be an absolute path; the environment guarantees this.
+    _base = os.path.abspath(case_dir) if case_dir else None
 
-    def _confined(target: str) -> str:
-        if _case_base is None:
-            raise PermissionError("filesystem access requires a case_dir")
-        resolved = os.path.abspath(
-            target if os.path.isabs(target) else os.path.join(_case_base, target)
-        )
-        if not (resolved == _case_base or resolved.startswith(_case_base + os.sep)):
-            raise PermissionError(f"path escapes case directory: {target!r}")
-        return resolved
+    def _resolve_inside_case(path: str) -> str:
+        """Resolve `path` (rel or abs) and confirm it stays inside _base.
+        Raises PermissionError on traversal/escape."""
+        if _base is None:
+            raise PermissionError("sandbox has no case_dir; filesystem access disabled")
+        target = os.path.abspath(path if os.path.isabs(path)
+                                 else os.path.join(_base, path))
+        if not (target == _base or target.startswith(_base + os.sep)):
+            raise PermissionError(f"path outside case directory: {path!r}")
+        return target
 
     def _safe_listdir(subdir: str = ".") -> list[str]:
-        return sorted(os.listdir(_confined(subdir)))
+        return sorted(os.listdir(_resolve_inside_case(subdir)))
 
     def _safe_path_join(*parts: str) -> str:
-        # Anchor relative compositions at case_dir so paths work without
-        # depending on the process CWD (which we deliberately do not change).
+        """Join path parts, returning an ABSOLUTE path rooted at case_dir.
+
+        We return an absolute path so the result can be passed to libraries
+        that don't go through our `_safe_open` wrapper (e.g. pdfplumber,
+        PIL.Image) without depending on a process-wide chdir.
+        """
         if not parts:
-            return _case_base or ""
-        first = parts[0]
-        if os.path.isabs(first) or _case_base is None:
-            return os.path.join(*parts)
-        return os.path.join(_case_base, *parts)
+            return _base or ""
+        joined = os.path.join(*parts)
+        if os.path.isabs(joined):
+            return _resolve_inside_case(joined)
+        if _base is None:
+            return joined
+        return _resolve_inside_case(joined)
 
     def _safe_path_exists(path: str) -> bool:
         try:
-            return os.path.exists(_confined(path))
+            return os.path.exists(_resolve_inside_case(path))
         except PermissionError:
             return False
 
     def _safe_open(path: str, mode: str = "r", *args, **kwargs):
-        # Read-only access, confined to case_dir. No append/write modes.
+        # Read-only access only. Reject any write/append/update modes.
         if any(c in mode for c in ("w", "a", "+", "x")):
-            raise PermissionError(f"write modes disallowed in sandbox: {mode!r}")
-        return open(_confined(path), mode, *args, **kwargs)  # noqa: SIM115
+            raise PermissionError(f"sandbox open() is read-only; mode={mode!r} rejected")
+        return open(_resolve_inside_case(path), mode, *args, **kwargs)
 
     # Pre-injected stdlib modules — pure-python, no I/O, agent doesn't need to
     # import them (and import statements are now rejected by the AST check).
@@ -229,7 +238,7 @@ def execute_code(
         "pdfplumber": pdfplumber,
         "pytesseract": pytesseract,
         "Image": Image,
-        "open": _safe_open,               # Read-only, case-dir-confined
+        "open": _safe_open,               # Path-confined, read-only
         "listdir": _safe_listdir,         # Enumerate evidence dirs
         "path_join": _safe_path_join,     # Compose relative paths
         "path_exists": _safe_path_exists, # Test evidence paths

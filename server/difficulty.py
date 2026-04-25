@@ -79,9 +79,8 @@ class DifficultyManager:
 
     def __init__(self) -> None:
         self._profiles: dict[str, AgentProfile] = {}
-        # Single-process lock; protects against concurrent /reset and /step
-        # mutations under uvicorn workers=1. Multi-worker deployments still
-        # need an external store (Redis) — see Phase 9.5 follow-up.
+        # In-process correctness only. Multi-worker correctness requires Redis
+        # (deferred to Phase 9.5).
         self._lock = threading.Lock()
 
     def get_or_create(self, session_id: str) -> AgentProfile:

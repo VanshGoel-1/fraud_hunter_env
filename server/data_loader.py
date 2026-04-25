@@ -18,9 +18,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 
-DEFAULT_CASE_BANK_DIR = Path(__file__).resolve().parents[1] / "data" / "case_bank"
-
-
 @dataclass
 class CaseHandle:
     case_id: str
@@ -28,11 +25,6 @@ class CaseHandle:
     conn: sqlite3.Connection
     seen_queries: set[str] = field(default_factory=set)
     tier: int = 1
-
-    @property
-    def case_dir(self) -> Path:
-        """Directory holding medicare_records.db and the evidence subfolders."""
-        return self.db_path.parent
 
     def close(self) -> None:
         try:

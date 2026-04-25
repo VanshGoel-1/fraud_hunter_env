@@ -31,7 +31,6 @@ import math
 import os
 import random
 import sqlite3
-import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -926,5 +925,9 @@ def _plant_foreign_affiliation(cur, rng, contractor_eid: str,
                 })))
     typologies.append("foreign_affiliation")
 
-# CLI lives in data_gen/build_case_bank.py — this module exposes the API only.
+
+# ── CLI removed ──────────────────────────────────────────────────────────────
+# The case-bank generator CLI lives in `data_gen/build_case_bank.py`.
+# This module exposes only `generate_multimodal_aks_case()` for programmatic use
+# (the environment imports it directly for on-the-fly fallback generation).
 
