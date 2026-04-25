@@ -1,0 +1,7 @@
+spec_version: 1
+name: fraud_hunter_env
+type: space
+runtime: fastapi
+app: fraud_hunter_env.server.app:app
+port: 8000
+

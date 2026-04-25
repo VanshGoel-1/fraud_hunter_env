@@ -1,0 +1,51 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-fraud_hunter_env"
+version = "0.1.0"
+description = "Fraud Hunter Env environment for OpenEnv"
+requires-python = ">=3.10"
+dependencies = [
+    # Core OpenEnv runtime (provides FastAPI server + HTTP client types)
+    "openenv-core[core]>=0.2.2",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.24.0",
+    # Multi-modal evidence: PDF generation (Pillow) + OCR (pdfplumber, pytesseract)
+    # The Dockerfile also installs the `tesseract-ocr` system package at runtime.
+    "Pillow>=10.0.0",
+    "pdfplumber>=0.10.0",
+    "PyPDF2>=3.0.0",
+    "pytesseract>=0.3.10",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "trl>=0.8.0",
+    "unsloth>=2024.3",
+    "vllm>=0.4.0",
+    "datasets>=2.16.0",
+]
+
+[project.scripts]
+# Server entry point - enables running via: uv run --project . server
+# or: python -m fraud_hunter_env.server.app
+server = "fraud_hunter_env.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["fraud_hunter_env", "fraud_hunter_env.server", "fraud_hunter_env.data_gen"]
+package-dir = { "fraud_hunter_env" = ".", "fraud_hunter_env.server" = "server", "fraud_hunter_env.data_gen" = "data_gen" }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

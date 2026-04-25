@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Unit test / coverage reports
+.coverage
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Project Specific
+# (Removed ignores for data so datasets can be pushed to Hugging Face)
+/dataset_ideas
+/hackathon_docs
+/docs
+/data
+
+research_and_eda.ipynb
+CLAUDE.md
+/.claude

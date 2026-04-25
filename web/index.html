@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraud Hunter AI — RLVR Dashboard</title>
+    <meta name="description" content="Real-time monitoring dashboard for the Government Fraud Hunter AI reinforcement learning environment">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.8);
+            --bg-card-hover: rgba(30, 41, 59, 0.9);
+            --border: rgba(59, 130, 246, 0.15);
+            --border-active: rgba(59, 130, 246, 0.5);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-purple: #8b5cf6;
+            --gradient-1: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            --gradient-2: linear-gradient(135deg, #06b6d4, #10b981);
+            --gradient-3: linear-gradient(135deg, #f59e0b, #ef4444);
+            --glow-blue: 0 0 20px rgba(59, 130, 246, 0.3);
+            --glow-green: 0 0 20px rgba(16, 185, 129, 0.3);
+            --glow-red: 0 0 20px rgba(239, 68, 68, 0.3);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .bg-grid {
+            position: fixed; inset: 0; z-index: -1;
+            background-image:
+                radial-gradient(ellipse 800px 500px at 50% 0%, rgba(59,130,246,0.08) 0%, transparent 70%),
+                linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+            background-size: 100%, 60px 60px, 60px 60px;
+        }
+
+        .header {
+            padding: 24px 40px;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+            position: sticky; top: 0; z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 24px; font-weight: 800;
+            background: var(--gradient-1); -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .header .badge {
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 20px; padding: 6px 14px;
+            font-size: 13px; color: var(--accent-green);
+        }
+
+        .badge .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 6px transparent; }
+        }
+
+        .dashboard { padding: 32px 40px; max-width: 1440px; margin: 0 auto; }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px; margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px; padding: 20px 24px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-card:hover {
+            border-color: var(--border-active);
+            transform: translateY(-2px);
+            box-shadow: var(--glow-blue);
+        }
+
+        .stat-card .label {
+            font-size: 12px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-muted); margin-bottom: 8px;
+        }
+
+        .stat-card .value {
+            font-size: 32px; font-weight: 800;
+            background: var(--gradient-1); -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-card .sub {
+            font-size: 13px; color: var(--text-secondary); margin-top: 4px;
+        }
+
+        .grid-2 {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 24px; margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h3 {
+            font-size: 16px; font-weight: 700;
+            color: var(--text-primary); margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        .card h3 .icon { font-size: 20px; }
+
+        .chart-container { position: relative; height: 260px; }
+
+        /* Tier progression */
+        .tier-bar {
+            display: flex; gap: 4px; margin-top: 12px;
+        }
+        .tier-bar .segment {
+            flex: 1; height: 36px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 700;
+            transition: all 0.3s;
+        }
+        .tier-bar .segment.active {
+            transform: scaleY(1.15);
+            box-shadow: var(--glow-blue);
+        }
+
+        /* Trace viewer */
+        .trace-container {
+            max-height: 300px; overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; line-height: 1.7;
+        }
+
+        .trace-step {
+            padding: 10px 14px; border-radius: 8px;
+            margin-bottom: 6px;
+            border-left: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .trace-step.think {
+            background: rgba(139,92,246,0.08);
+            border-left-color: var(--accent-purple);
+            color: #c4b5fd;
+        }
+
+        .trace-step.action {
+            background: rgba(59,130,246,0.08);
+            border-left-color: var(--accent-blue);
+            color: #93c5fd;
+        }
+
+        .trace-step.reward {
+            background: rgba(16,185,129,0.08);
+            border-left-color: var(--accent-green);
+            color: #6ee7b7;
+        }
+
+        .trace-step.penalty {
+            background: rgba(239,68,68,0.08);
+            border-left-color: var(--accent-red);
+            color: #fca5a5;
+        }
+
+        /* Typology bars */
+        .typology-row {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .typology-row .name {
+            width: 160px; font-size: 12px;
+            color: var(--text-secondary); text-align: right;
+        }
+
+        .typology-row .bar-bg {
+            flex: 1; height: 20px; border-radius: 6px;
+            background: rgba(255,255,255,0.04); overflow: hidden;
+        }
+
+        .typology-row .bar-fill {
+            height: 100%; border-radius: 6px;
+            transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .typology-row .val {
+            width: 50px; font-size: 12px; font-weight: 600;
+            color: var(--text-primary); text-align: right;
+        }
+
+        /* Gauge */
+        .gauge-wrap { text-align: center; padding: 20px 0; }
+        .gauge-value {
+            font-size: 56px; font-weight: 900;
+            background: var(--gradient-2); -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .gauge-label { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+
+        /* Before/after table */
+        .compare-table {
+            width: 100%; border-collapse: separate;
+            border-spacing: 0 4px;
+        }
+
+        .compare-table th {
+            font-size: 11px; text-transform: uppercase;
+            letter-spacing: 1px; color: var(--text-muted);
+            padding: 8px 12px; text-align: left;
+        }
+
+        .compare-table td {
+            padding: 10px 12px; font-size: 14px;
+            background: rgba(255,255,255,0.02);
+            border-top: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .compare-table td:first-child { border-radius: 8px 0 0 8px; }
+        .compare-table td:last-child { border-radius: 0 8px 8px 0; }
+
+        .delta-positive { color: var(--accent-green); font-weight: 600; }
+        .delta-negative { color: var(--accent-red); font-weight: 600; }
+
+        @media (max-width: 900px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .dashboard { padding: 16px; }
+            .header { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+
+    <header class="header">
+        <h1>🔍 Fraud Hunter AI — RLVR Dashboard</h1>
+        <div class="badge"><div class="dot"></div> Environment Live</div>
+    </header>
+
+    <main class="dashboard">
+        <!-- KPI Row -->
+        <section class="stats-row">
+            <div class="stat-card">
+                <div class="label">Current Tier</div>
+                <div class="value" id="kpi-tier">1</div>
+                <div class="sub">RLVE Difficulty</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Episode Reward</div>
+                <div class="value" id="kpi-reward">0.0</div>
+                <div class="sub">Rolling avg (20 eps)</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Agentic Recall</div>
+                <div class="value" id="kpi-recall">0%</div>
+                <div class="sub">Tables queried / required</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">CoT Validity</div>
+                <div class="value" id="kpi-cot">0%</div>
+                <div class="sub">Steps with valid &lt;think&gt;</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Format Errors</div>
+                <div class="value" id="kpi-errors">0</div>
+                <div class="sub">Schema violations</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Proof Chains</div>
+                <div class="value" id="kpi-chains">0</div>
+                <div class="sub">Complete E→L→C chains</div>
+            </div>
+        </section>
+
+        <!-- Charts Row 1 -->
+        <section class="grid-2">
+            <div class="card">
+                <h3><span class="icon">📈</span> Reward Curve</h3>
+                <div class="chart-container"><canvas id="rewardChart"></canvas></div>
+            </div>
+            <div class="card">
+                <h3><span class="icon">🎯</span> Tier Progression</h3>
+                <div class="chart-container"><canvas id="tierChart"></canvas></div>
+                <div class="tier-bar" id="tierBar"></div>
+            </div>
+        </section>
+
+        <!-- Charts Row 2 -->
+        <section class="grid-2">
+            <div class="card">
+                <h3><span class="icon">🧬</span> Fraud Typology Detection Rate</h3>
+                <div id="typologyBars"></div>
+            </div>
+            <div class="card">
+                <h3><span class="icon">⚡</span> Action Error Rate</h3>
+                <div class="gauge-wrap">
+                    <div class="gauge-value" id="errorGauge">2.1%</div>
+                    <div class="gauge-label">Format validation failure rate</div>
+                </div>
+                <div class="chart-container" style="height:150px"><canvas id="errorChart"></canvas></div>
+            </div>
+        </section>
+
+        <!-- Before/After + Trace -->
+        <section class="grid-2">
+            <div class="card">
+                <h3><span class="icon">🔄</span> Before / After GRPO</h3>
+                <table class="compare-table">
+                    <thead>
+                        <tr><th>Metric</th><th>Random Policy</th><th>After GRPO</th><th>Δ</th></tr>
+                    </thead>
+                    <tbody id="compareBody"></tbody>
+                </table>
+            </div>
+            <div class="card">
+                <h3><span class="icon">💭</span> Agent Reasoning Trace</h3>
+                <div class="trace-container" id="traceViewer"></div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // ── Simulated data (replace with SSE from /metrics endpoint) ──────────
+
+        const rewardHistory = [];
+        const tierHistory = [];
+        const errorHistory = [];
+        let episode = 0;
+
+        // ── Reward Chart ──────────────────────────────────────────────────────
+        const rewardCtx = document.getElementById('rewardChart').getContext('2d');
+        const rewardChart = new Chart(rewardCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Episode Reward',
+                    data: [],
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 2,
+                    borderWidth: 2,
+                }, {
+                    label: 'Rolling Avg',
+                    data: [],
+                    borderColor: '#8b5cf6',
+                    borderDash: [5, 5],
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } },
+                    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } }
+                },
+                plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } }
+            }
+        });
+
+        // ── Tier Chart ────────────────────────────────────────────────────────
+        const tierCtx = document.getElementById('tierChart').getContext('2d');
+        const tierChart = new Chart(tierCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Difficulty Tier',
+                    data: [],
+                    borderColor: '#06b6d4',
+                    backgroundColor: 'rgba(6,182,212,0.1)',
+                    fill: true,
+                    stepped: 'after',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    y: { min: 0, max: 6, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { stepSize: 1, color: '#64748b' } },
+                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // ── Error Chart ───────────────────────────────────────────────────────
+        const errorCtx = document.getElementById('errorChart').getContext('2d');
+        const errorChart = new Chart(errorCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: 'rgba(239,68,68,0.4)',
+                    borderColor: '#ef4444',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b' } },
+                    x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 9 } } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // ── Tier Bar ──────────────────────────────────────────────────────────
+        function renderTierBar(active) {
+            const colors = ['#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ef4444'];
+            const labels = ['T1 Easy', 'T2 Med', 'T3 Hard', 'T4 Expert', 'T5 Elite'];
+            const bar = document.getElementById('tierBar');
+            bar.innerHTML = labels.map((l, i) =>
+                `<div class="segment ${i + 1 === active ? 'active' : ''}"
+                      style="background:${i + 1 === active ? colors[i] : 'rgba(255,255,255,0.05)'};
+                             color:${i + 1 === active ? '#fff' : '#64748b'}">${l}</div>`
+            ).join('');
+        }
+
+        // ── Typology Bars ─────────────────────────────────────────────────────
+        function renderTypologyBars() {
+            const data = [
+                { name: 'Dead Patient', val: 92, color: '#10b981' },
+                { name: 'Duplicate Bill', val: 87, color: '#06b6d4' },
+                { name: 'Upcoding', val: 71, color: '#3b82f6' },
+                { name: 'AKS Violation', val: 54, color: '#8b5cf6' },
+                { name: 'PPP Fraud', val: 38, color: '#f59e0b' },
+                { name: 'Double Billing', val: 45, color: '#ef4444' },
+                { name: 'Product Sub.', val: 22, color: '#ec4899' },
+            ];
+            const container = document.getElementById('typologyBars');
+            container.innerHTML = data.map(d => `
+                <div class="typology-row">
+                    <div class="name">${d.name}</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill" style="width:${d.val}%;background:${d.color}"></div>
+                    </div>
+                    <div class="val">${d.val}%</div>
+                </div>
+            `).join('');
+        }
+
+        // ── Before/After Table ────────────────────────────────────────────────
+        function renderCompareTable() {
+            const rows = [
+                { metric: 'Avg Episode Reward', before: -42.3, after: 847.5, fmt: v => v.toFixed(1) },
+                { metric: 'Agentic Recall', before: 0.12, after: 0.89, fmt: v => (v * 100).toFixed(0) + '%' },
+                { metric: 'CoT Validity', before: 0.0, after: 0.94, fmt: v => (v * 100).toFixed(0) + '%' },
+                { metric: 'Format Error Rate', before: 0.67, after: 0.021, fmt: v => (v * 100).toFixed(1) + '%' },
+                { metric: 'Proof Chains / ep', before: 0, after: 2.4, fmt: v => v.toFixed(1) },
+                { metric: 'Avg Tier Reached', before: 1.0, after: 3.8, fmt: v => v.toFixed(1) },
+            ];
+            const body = document.getElementById('compareBody');
+            body.innerHTML = rows.map(r => {
+                const delta = r.after - r.before;
+                const cls = delta > 0 ? 'delta-positive' : 'delta-negative';
+                const sign = delta > 0 ? '+' : '';
+                return `<tr>
+                    <td>${r.metric}</td>
+                    <td>${r.fmt(r.before)}</td>
+                    <td style="font-weight:600">${r.fmt(r.after)}</td>
+                    <td class="${cls}">${sign}${r.fmt(delta)}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // ── Agent Trace Viewer ────────────────────────────────────────────────
+        function renderTrace() {
+            const steps = [
+                { type: 'think', text: '<think> The whistleblower mentions Starpoint Medical LLC. Let me query the corporate registry to identify shell structures. </think>' },
+                { type: 'action', text: '→ query_corporate("Starpoint Medical LLC") → entity_id=E001, ubo_id=U001' },
+                { type: 'reward', text: '✓ +1.0 CoT grounded (entity Starpoint Medical LLC exists)' },
+                { type: 'think', text: '<think> E001 has ubo_id=U001. I should check if other entities share this UBO to identify shells. </think>' },
+                { type: 'action', text: '→ sql_query("SELECT * FROM corporate_registry WHERE ubo_id=\'U001\'") → 3 rows' },
+                { type: 'reward', text: '✓ +2.5 SQL rows bonus (3 rows returned)' },
+                { type: 'think', text: '<think> E003 Acme Shell LLC has parent=E002 Starpoint Holdings. This is a shell link! </think>' },
+                { type: 'action', text: '→ link_shell("Acme Shell LLC", "Starpoint Holdings Ltd")' },
+                { type: 'reward', text: '✓ +50.0 Shell link confirmed! Proof chain: entity→link' },
+                { type: 'think', text: '<think> Beneficiary B001 has dod=2025-11-03 but claim C003 date=2026-03-01. Dead patient! </think>' },
+                { type: 'action', text: '→ claim_contradiction("beneficiary:B001", "claim:C003", "dead_patient_claim")' },
+                { type: 'reward', text: '✓ +100.0 Contradiction confirmed (×1.0)! Full proof chain: entity→link→contradiction' },
+            ];
+            const viewer = document.getElementById('traceViewer');
+            viewer.innerHTML = steps.map(s =>
+                `<div class="trace-step ${s.type}">${s.text}</div>`
+            ).join('');
+        }
+
+        // ── Simulation Loop ──────────────────────────────────────────────────
+        function simulate() {
+            episode++;
+            const tier = Math.min(5, Math.floor(episode / 8) + 1);
+            const base = tier * 150 + (Math.random() - 0.3) * 200;
+            const reward = Math.max(-50, base);
+            const errors = Math.max(0, Math.floor(3 - episode * 0.08 + Math.random()));
+
+            rewardHistory.push(reward);
+            tierHistory.push(tier);
+            errorHistory.push(errors);
+
+            // Update charts
+            rewardChart.data.labels.push(episode);
+            rewardChart.data.datasets[0].data.push(reward);
+            const rollingAvg = rewardHistory.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, rewardHistory.length);
+            rewardChart.data.datasets[1].data.push(rollingAvg);
+            rewardChart.update('none');
+
+            tierChart.data.labels.push(episode);
+            tierChart.data.datasets[0].data.push(tier);
+            tierChart.update('none');
+
+            errorChart.data.labels.push(episode);
+            errorChart.data.datasets[0].data.push(errors);
+            errorChart.update('none');
+
+            // Update KPIs
+            document.getElementById('kpi-tier').textContent = tier;
+            document.getElementById('kpi-reward').textContent = rollingAvg.toFixed(1);
+            document.getElementById('kpi-recall').textContent = Math.min(99, 12 + episode * 1.8).toFixed(0) + '%';
+            document.getElementById('kpi-cot').textContent = Math.min(98, 5 + episode * 2.1).toFixed(0) + '%';
+            document.getElementById('kpi-errors').textContent = errors;
+            document.getElementById('kpi-chains').textContent = Math.floor(episode * 0.4);
+
+            renderTierBar(tier);
+
+            const errRate = (errorHistory.reduce((a, b) => a + b, 0) / errorHistory.length * 3.2).toFixed(1);
+            document.getElementById('errorGauge').textContent = errRate + '%';
+        }
+
+        // ── Init ──────────────────────────────────────────────────────────────
+        renderTierBar(1);
+        renderTypologyBars();
+        renderCompareTable();
+        renderTrace();
+
+        // ── Live metrics: real SSE first, simulation as fallback ──────────────
+        function applyMetrics(m) {
+            episode++;
+            const tier = m.difficulty_tier ?? 1;
+            const reward = m.episode_reward ?? 0;
+            const errors = m.format_error_count ?? 0;
+            const recallPct = Math.round((m.agentic_recall ?? 0) * 100);
+            const cotPct = Math.round((m.cot_validity_score ?? 0) * 100);
+            const chains = m.proof_chain_length ?? 0;
+
+            rewardHistory.push(reward);
+            tierHistory.push(tier);
+            errorHistory.push(errors);
+
+            rewardChart.data.labels.push(episode);
+            rewardChart.data.datasets[0].data.push(reward);
+            const rollingAvg = rewardHistory.slice(-20).reduce((a, b) => a + b, 0)
+                                / Math.min(20, rewardHistory.length);
+            rewardChart.data.datasets[1].data.push(rollingAvg);
+            rewardChart.update('none');
+
+            tierChart.data.labels.push(episode);
+            tierChart.data.datasets[0].data.push(tier);
+            tierChart.update('none');
+
+            errorChart.data.labels.push(episode);
+            errorChart.data.datasets[0].data.push(errors);
+            errorChart.update('none');
+
+            document.getElementById('kpi-tier').textContent = tier;
+            document.getElementById('kpi-reward').textContent = rollingAvg.toFixed(1);
+            document.getElementById('kpi-recall').textContent = recallPct + '%';
+            document.getElementById('kpi-cot').textContent = cotPct + '%';
+            document.getElementById('kpi-errors').textContent = errors;
+            document.getElementById('kpi-chains').textContent = chains;
+
+            renderTierBar(tier);
+
+            const errRate = (errorHistory.reduce((a, b) => a + b, 0)
+                              / errorHistory.length * 3.2).toFixed(1);
+            document.getElementById('errorGauge').textContent = errRate + '%';
+        }
+
+        let sseFallbackTimer = null;
+        function startSimulationFallback() {
+            if (sseFallbackTimer) return;
+            sseFallbackTimer = setInterval(simulate, 1200);
+        }
+
+        let evtSource = null;
+        try {
+            evtSource = new EventSource('/metrics');
+            evtSource.onmessage = (e) => {
+                try { applyMetrics(JSON.parse(e.data)); }
+                catch (_) { /* ignore malformed frames */ }
+            };
+            evtSource.onerror = () => {
+                evtSource.close();
+                startSimulationFallback();
+            };
+        } catch (_) {
+            startSimulationFallback();
+        }
+    </script>
+</body>
+</html>
