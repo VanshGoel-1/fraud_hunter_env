@@ -71,10 +71,10 @@ unsloth_compiled_cache/
 /data/All FFS Claims/
 /data/pde.csv
 /data/raw/
-/data
+/data/*.csv
 
-# Generated PDF evidence inside per-case dirs gets large — ignore by glob,
-# but keep the .db files which are the actual training signal.
+# Generated multi-modal evidence inside per-case dirs is heavy — ignore by glob.
+# The medicare_records.db files (the actual training signal) ARE committed.
 data/case_bank/**/scanned_claims/
 data/case_bank/**/intercepted_comms/
 
