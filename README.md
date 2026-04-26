@@ -220,7 +220,97 @@ curl https://<your-username>-fraud-hunter-env.hf.space/health
 
 Then update the table at the top of this README with the Space URL.
 
-## 7. Project structure
+## 7. Natural-language workflow and dataset upload
+
+The runtime now supports:
+
+1. **Natural-language instructions** (no manual SQL required in the UI)
+2. **CSV/ZIP dataset upload** from dashboard or API
+3. **Real-time online RL weight updates** in the action loop
+
+### 7.1 Natural-language agent actions
+
+Use dashboard field **Natural-language instruction** and click **Auto Step (LLM)**.
+The backend maps user text to a strict, schema-valid `FraudHunterAction`.
+
+API equivalent:
+
+```bash
+curl -X POST http://localhost:8000/fraud_hunter/nl_action \
+   -H "Content-Type: application/json" \
+   -d '{
+      "observation": {"case_brief": "...", "step_count": 0},
+      "objective": "Investigate efficiently and maximize evidence-backed reward.",
+      "user_message": "Find shell links and billing contradictions, then summarize.",
+      "llm": {
+         "enabled": true,
+         "base_url": "http://localhost:11434/v1",
+         "model": "llama3.1:8b",
+         "api_key": ""
+      }
+   }'
+```
+
+### 7.2 Dataset upload endpoint
+
+Endpoint:
+
+- `POST /fraud_hunter/upload_dataset`
+- multipart form fields:
+   - `file` (`.csv` or `.zip`)
+   - optional `dataset_name`
+   - optional `extract_zip` (`true`/`false`, default `true`)
+
+CSV example:
+
+```bash
+curl -X POST http://localhost:8000/fraud_hunter/upload_dataset \
+   -F "file=@data/pde.csv" \
+   -F "dataset_name=pde_2026" \
+   -F "extract_zip=false"
+```
+
+ZIP example:
+
+```bash
+curl -X POST http://localhost:8000/fraud_hunter/upload_dataset \
+   -F "file=@my_dataset_bundle.zip" \
+   -F "dataset_name=claims_bundle" \
+   -F "extract_zip=true"
+```
+
+Security controls:
+
+1. File-size cap per upload
+2. Extension allowlist (`.csv`, `.zip`)
+3. ZIP path traversal protection
+
+### 7.3 Online RL loop endpoints
+
+- `POST /fraud_hunter/agent_action_online`
+- `POST /fraud_hunter/online_rl/update`
+- `GET  /fraud_hunter/online_rl/state`
+- `POST /fraud_hunter/online_rl/reset`
+
+Loop:
+
+`select action -> run /step -> send reward -> update weights`
+
+### 7.4 New environment variables
+
+See [.env.example](.env.example) for full defaults. New knobs include:
+
+```bash
+FRAUD_HUNTER_ONLINE_RL_ENABLED=true
+FRAUD_HUNTER_ONLINE_RL_LR=0.03
+FRAUD_HUNTER_ONLINE_RL_TEMPERATURE=1.0
+
+FRAUD_HUNTER_UPLOAD_ENABLED=true
+FRAUD_HUNTER_UPLOAD_MAX_MB=256
+# FRAUD_HUNTER_UPLOAD_DIR=/absolute/path/to/upload-dir
+```
+
+## 8. Project structure
 
 ```text
 fraud_hunter_env/
@@ -247,16 +337,19 @@ fraud_hunter_env/
 │   ├── difficulty.py       # 5-tier RLVE manager
 │   ├── data_loader.py      # tiered SQLite case loader
 │   ├── sandbox.py          # CodeAct Python / SQL sandbox
+│   ├── online_rl.py        # online policy-gradient head for real-time updates
 │   └── metrics_bus.py      # in-memory metrics fan-out (SSE + leaderboard)
 ├── training/
 │   ├── grpo_train.py       # Unsloth + TRL GRPO with DAPO loss
 │   └── grpo_train.ipynb    # Colab-ready notebook
 ├── tests/                  # optional legacy test suite
+│   ├── test_online_rl.py
+│   └── test_upload_and_nl_api.py
 ├── web/index.html          # live SSE monitoring dashboard
 └── assets/                 # generated plots committed to the repo
 ```
 
-## 8. Storytelling — what to look for in the demo
+## 9. Storytelling — what to look for in the demo
 
 1. **Open the dashboard** at `/dashboard`. It streams every terminal-step
    metric over SSE; you can watch the reward curve build in real time as
@@ -268,7 +361,7 @@ fraud_hunter_env/
    case (multi-sector fraud, 4-layer shells, red herrings). The expert
    stays positive; the random policy collapses.
 
-## 9. Related references
+## 10. Related references
 
 - OpenEnv docs: <https://openenv.dev>
 - TRL OpenEnv guide: <https://huggingface.co/docs/trl/en/openenv>
