@@ -640,6 +640,22 @@
             }
         }
 
+        // ── Bootstrap from /metrics/history on page load ──────────────────────
+        // This ensures the dashboard shows the last N episodes from the bus
+        // even when no live client is currently connected. Live SSE then
+        // appends new episodes as they arrive.
+        async function bootstrapHistory() {
+            try {
+                const r = await fetch('/metrics/history?limit=100', { cache: 'no-store' });
+                if (!r.ok) return;
+                const history = await r.json();
+                if (!Array.isArray(history) || history.length === 0) return;
+                history.forEach(applyMetrics);
+            } catch (_) { /* server not reachable; SSE handler will show banner */ }
+        }
+        bootstrapHistory();
+
+        // ── Live SSE — appends new episodes as they happen ────────────────────
         let evtSource = null;
         try {
             evtSource = new EventSource('/metrics');

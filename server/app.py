@@ -187,6 +187,16 @@ async def metrics_sse():
     )
 
 
+# ── Metrics history (bootstrap source for the dashboard) ─────────────────────
+
+@app.get("/metrics/history")
+async def metrics_history(limit: int = 100):
+    """Return the most recent N episode metrics dicts. The dashboard fetches
+    this on initial load so the KPIs/charts populate from the bus history
+    even when no live client is currently driving the env."""
+    return metrics_bus.recent(limit)
+
+
 # ── Leaderboard ──────────────────────────────────────────────────────────────
 
 @app.get("/leaderboard")
