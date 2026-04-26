@@ -24,7 +24,7 @@ short_description: RLVR environment for training LLMs to investigate FCA fraud
 | **Training notebook**  | [`training/grpo_train.ipynb`](training/grpo_train.ipynb) (Colab-ready) |
 | **Demo video**         | _add a YouTube/Loom link < 2 min once recorded_ |
 | **Slides / writeup**   | _add a HF blog-post link or PDF link here_ |
-| **Tests**              | 90 passing (`pytest tests/`) |
+| **Runtime Validation** | `python scripts/validate_runtime.py` |
 | **License**            | MIT |
 
 ---
@@ -138,17 +138,23 @@ python eval.py --episodes 30 --tier 1
 # 1. Install (editable; pulls FastAPI, openenv-core, pydantic v2)
 pip install -e .
 
-# 2. Run the test suite (90 tests; covers grader, env, models, contracts)
-pytest tests/ -q
+# 2. Run runtime validation (no pytest required)
+python scripts/validate_runtime.py --skip-http
 
-# 3. Drive the env headlessly with a scripted agent
-python inference.py
-
-# 4. Compare baseline vs scripted-expert (writes assets/*.png)
-python eval.py --episodes 30 --tier 1
-
-# 5. Boot the OpenEnv FastAPI server + monitoring dashboard
+# 3. Start the OpenEnv FastAPI server
 python -m fraud_hunter_env.server.app
+
+# 4. Validate the previously-untested HTTP action surface (in-process by default)
+python scripts/http_surface_check.py
+
+# Optional: validate against a running server instead
+python scripts/http_surface_check.py --remote --base-url http://localhost:8000
+
+# 5. Run the interactive happy-path demo driver
+python demo.py --base-url http://localhost:8000
+
+# 6. Compare baseline vs scripted-expert on holdout seeds (writes assets/*.png)
+python eval.py --episodes 30 --tier 1
 # → OpenEnv API:  http://localhost:8000/docs
 # → Dashboard:    http://localhost:8000/dashboard
 # → Health:       http://localhost:8000/health
@@ -218,6 +224,10 @@ Then update the table at the top of this README with the Space URL.
 
 ```text
 fraud_hunter_env/
+├── scripts/
+│   ├── validate_runtime.py # non-pytest compile + HTTP validation entrypoint
+│   └── http_surface_check.py # validates /step serialization for key action kinds
+├── demo.py                 # compatibility wrapper around scripts/http_surface_check.py
 ├── eval.py                 # baseline-vs-expert comparison harness (writes assets/*.png)
 ├── inference.py            # scripted-agent smoke test against the env
 ├── client.py               # OpenEnv WebSocket client (importable from notebooks)
@@ -241,7 +251,7 @@ fraud_hunter_env/
 ├── training/
 │   ├── grpo_train.py       # Unsloth + TRL GRPO with DAPO loss
 │   └── grpo_train.ipynb    # Colab-ready notebook
-├── tests/                  # 90 pytest tests
+├── tests/                  # optional legacy test suite
 ├── web/index.html          # live SSE monitoring dashboard
 └── assets/                 # generated plots committed to the repo
 ```

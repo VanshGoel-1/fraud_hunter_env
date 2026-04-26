@@ -35,6 +35,9 @@ from fraud_hunter_env.client import FraudHunterEnv
 from fraud_hunter_env.models import FraudHunterAction
 
 
+EVAL_SEED_RANGE = (8001, 10000)
+
+
 # ── Policy state ─────────────────────────────────────────────────────────────
 # Policies are stateful within an episode (they remember what they discovered
 # from prior tool_outputs). State is a plain dict the harness threads through.
@@ -169,6 +172,21 @@ def _ensure_server_up(base_url: str) -> None:
         sys.stderr.write(
             f"\n[FATAL] cannot reach Fraud Hunter Env server at {base_url}: {exc}\n"
             f"Start it first:  uv run server/app.py\n\n"
+        )
+        sys.exit(2)
+
+
+def _configure_eval_seed_range(base_url: str) -> None:
+    try:
+        response = requests.post(
+            f"{base_url}/fraud_hunter/seed_range",
+            json={"seed_min": EVAL_SEED_RANGE[0], "seed_max": EVAL_SEED_RANGE[1]},
+            timeout=3,
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        sys.stderr.write(
+            f"\n[FATAL] could not configure evaluation seed range {EVAL_SEED_RANGE}: {exc}\n"
         )
         sys.exit(2)
 
@@ -325,6 +343,7 @@ def main() -> None:
 
     random.seed(args.seed)
     _ensure_server_up(args.base_url)
+    _configure_eval_seed_range(args.base_url)
 
     all_results: dict[str, list[dict]] = {}
     for name, policy in POLICIES.items():

@@ -57,6 +57,15 @@ _metrics_persist_path = (
 )
 
 metrics_bus = InMemoryMetricsBus(persist_path=_metrics_persist_path)
+_ENV_CONFIG: dict[str, int | None] = {"seed_min": None, "seed_max": None}
+
+
+def _active_seed_range() -> tuple[int, int] | None:
+    lo = _ENV_CONFIG["seed_min"]
+    hi = _ENV_CONFIG["seed_max"]
+    if lo is None or hi is None:
+        return None
+    return int(lo), int(hi)
 
 
 def record_episode_metrics(metrics: dict[str, Any]) -> None:
@@ -68,7 +77,10 @@ def record_episode_metrics(metrics: dict[str, Any]) -> None:
 # Wire `on_episode_end` so terminal-step metrics flow into _episode_log + SSE.
 
 app = create_app(
-    env=lambda: FraudHunterEnvironment(on_episode_end=metrics_bus.record),
+    env=lambda: FraudHunterEnvironment(
+        on_episode_end=metrics_bus.record,
+        case_seed_range=_active_seed_range(),
+    ),
     action_cls=FraudHunterAction,
     observation_cls=FraudHunterObservation,
     env_name="fraud_hunter_env",
@@ -230,7 +242,26 @@ async def fraud_hunter_health():
         "status": "healthy",
         "episodes_logged": metrics_bus.episode_count(),
         "sse_clients": metrics_bus.subscriber_count(),
+        "seed_range": _active_seed_range(),
     }
+
+
+@app.get("/fraud_hunter/seed_range")
+async def get_seed_range():
+    return {"seed_min": _ENV_CONFIG["seed_min"], "seed_max": _ENV_CONFIG["seed_max"]}
+
+
+@app.post("/fraud_hunter/seed_range")
+async def set_seed_range(payload: dict[str, int | None]):
+    seed_min = payload.get("seed_min")
+    seed_max = payload.get("seed_max")
+    if (seed_min is None) != (seed_max is None):
+        return JSONResponse({"detail": "seed_min and seed_max must both be set or both be null"}, status_code=400)
+    if seed_min is not None and seed_max is not None and seed_min > seed_max:
+        return JSONResponse({"detail": "seed_min must be <= seed_max"}, status_code=400)
+    _ENV_CONFIG["seed_min"] = seed_min
+    _ENV_CONFIG["seed_max"] = seed_max
+    return {"seed_min": seed_min, "seed_max": seed_max}
 
 
 def main():

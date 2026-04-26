@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import gc
 import random
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -42,16 +43,45 @@ from fraud_hunter_env.server.grader import GraderOutput, compute_agentic_recall,
 
 
 _DEFAULT_CASE_BANK = Path(__file__).resolve().parent.parent / "data" / "case_bank"
+_TABLE_ACCESS_RE = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*)", re.IGNORECASE)
 
 
-def _bank_cases_for_tier(bank_dir: Path, tier: int) -> list[Path]:
+def _case_seed(case_dir: Path) -> Optional[int]:
+    db_path = case_dir / "medicare_records.db"
+    if not db_path.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                "SELECT value FROM case_metadata WHERE key = 'seed'"
+            ).fetchone()
+            return int(row[0]) if row and row[0] is not None else None
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
+def _bank_cases_for_tier(
+    bank_dir: Path,
+    tier: int,
+    seed_range: tuple[int, int] | None = None,
+) -> list[Path]:
     """Return all pre-built case directories under bank_dir/tier_N that have a DB."""
     tier_dir = bank_dir / f"tier_{tier}"
     if not tier_dir.is_dir():
         return []
-    return [
+    candidates = [
         p for p in tier_dir.iterdir()
         if p.is_dir() and (p / "medicare_records.db").is_file()
+    ]
+    if seed_range is None:
+        return candidates
+    lo, hi = seed_range
+    return [
+        p for p in candidates
+        if (seed := _case_seed(p)) is not None and lo <= seed <= hi
     ]
 
 
@@ -62,14 +92,22 @@ CASE_BRIEF_TEMPLATE = (
     "government contracting irregularities, and/or PPP loan fraud.\n\n"
     "IMPORTANT: Wrap your reasoning in <think>...</think> tags before every action.\n"
     "Actions without reasoning will be penalised.\n\n"
+    "Contradiction format contract:\n"
+    "  - Beneficiaries must be referenced as beneficiary:[DESYNPUF_ID]\n"
+    "  - Claims must be referenced as claim:[CLM_ID]\n"
+    "  - Providers can be referenced as provider_npi:[10-digit NPI]\n"
+    "  Example: evidence_a='beneficiary:BENE_0001', evidence_b='claim:C_FRAUD_DEAD'\n\n"
     "Available tools:\n"
     "  query_corporate(entity_name|entity_id) → corporate registry + filings\n"
     "  query_medicare(beneficiary_id|claim_id) → claims / beneficiary records\n"
     "  sql_query(sql_statement) → raw SELECT on the case database\n"
-    "  code_act(python_code)   → sandboxed Python with `conn` and `pd`\n"
+    "  code_act(python_code)   → sandboxed Python with `conn`, `pd`, and read-only helpers for evidence files\n"
+    "      Use code_act to inspect intercepted_comms/*.txt and scanned_claims/*.pdf when you need filesystem evidence.\n"
     "  extract_entity(name, kind, npi_code?) → flag an entity as fraudulent\n"
     "  link_shell(child_entity, parent_entity) → assert UBO ownership\n"
     "  claim_contradiction(evidence_a, evidence_b, contradiction_kind) → flag anomaly\n"
+    "  ocr_document(pdf_path) → returns OCR text and the base64-encoded source document\n"
+    "  compare_doc_vs_claim(claim_id, extracted_fields) → verify OCR fields against the claim record\n"
     "  submit_case(case_summary, confidence, typologies?) → terminate and seek conviction\n\n"
     "Fraud typologies: dead_patient_claim, duplicate_bill, upcoding, unbundling,\n"
     "  aks_violation, off_label_marketing, double_billing, cost_pricing_fraud,\n"
@@ -88,6 +126,7 @@ class FraudHunterEnvironment(Environment):
         self,
         case_bank_dir: str | None = None,
         rng_seed: int | None = None,
+        case_seed_range: tuple[int, int] | None = None,
         on_episode_end: Optional[Callable[[dict[str, Any]], None]] = None,
     ):
         # Manual tempdir (no auto-finalizer): tempfile.TemporaryDirectory's
@@ -100,6 +139,7 @@ class FraudHunterEnvironment(Environment):
         bank = Path(case_bank_dir) if case_bank_dir else _DEFAULT_CASE_BANK
         self._bank_dir: Optional[Path] = bank if bank.is_dir() else None
         self._rng = random.Random(rng_seed)
+        self._case_seed_range = case_seed_range
         self._on_episode_end = on_episode_end
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._case: Optional[CaseHandle] = None
@@ -118,6 +158,26 @@ class FraudHunterEnvironment(Environment):
         self._session_id: str = str(uuid4())
 
         self._diff_mgr = get_difficulty_manager()
+
+    def _record_source_access(self, source: str) -> None:
+        value = (source or "").strip().lower().replace("\\", "/")
+        if not value:
+            return
+        for table in SQL_TABLES:
+            if value == table:
+                self._queried_tables.add(table)
+                return
+        for dirname in FILESYSTEM_EVIDENCE_DIRS:
+            if value == dirname or value.startswith(dirname + "/"):
+                self._queried_tables.add(dirname)
+                return
+
+    def _trace_sql_statement(self, sql: str) -> None:
+        statement = (sql or "").strip().lower()
+        if not statement:
+            return
+        for match in _TABLE_ACCESS_RE.finditer(statement):
+            self._record_source_access(match.group(1))
 
     def _build_evidence_graph(self) -> dict[str, Any]:
         """Construct the evidence graph returned in every observation."""
@@ -161,12 +221,16 @@ class FraudHunterEnvironment(Environment):
         # Prefer pre-built bank when available; fall back to on-the-fly generation.
         bank_pick: Optional[Path] = None
         if self._bank_dir is not None:
-            candidates = _bank_cases_for_tier(self._bank_dir, self._difficulty_tier)
+            candidates = _bank_cases_for_tier(
+                self._bank_dir,
+                self._difficulty_tier,
+                self._case_seed_range,
+            )
             # Tier-down fallback: scan lower tiers if current tier has no cases
             t = self._difficulty_tier
             while not candidates and t > 1:
                 t -= 1
-                candidates = _bank_cases_for_tier(self._bank_dir, t)
+                candidates = _bank_cases_for_tier(self._bank_dir, t, self._case_seed_range)
             if candidates:
                 bank_pick = self._rng.choice(candidates)
 
@@ -178,7 +242,15 @@ class FraudHunterEnvironment(Environment):
             shutil.copytree(bank_pick, dest)
         else:
             case_id = f"case_{uuid4().hex[:8]}"
-            generate_multimodal_aks_case(sandbox_path, case_id, self._difficulty_tier)
+            generation_seed = None
+            if self._case_seed_range is not None:
+                generation_seed = self._rng.randint(*self._case_seed_range)
+            generate_multimodal_aks_case(
+                sandbox_path,
+                case_id,
+                self._difficulty_tier,
+                rng_seed=generation_seed,
+            )
 
         db_path = sandbox_path / case_id / "medicare_records.db"
         # check_same_thread=False: the CodeAct sandbox runs `exec` in a worker
@@ -210,6 +282,7 @@ class FraudHunterEnvironment(Environment):
         )
         return FraudHunterObservation(
             case_brief=brief,
+            base64_document=None,
             step_count=0,
             budget_remaining=MAX_EPISODE_STEPS,
             difficulty_tier=self._difficulty_tier,
@@ -225,22 +298,19 @@ class FraudHunterEnvironment(Environment):
         self._state.step_count += 1
         self._total_steps += 1
 
-        # Track which tables/sources are being queried (for agentic recall).
+        # Track actual sources touched by the action itself.
         if action.kind == ActionKind.QUERY_CORPORATE:
-            self._queried_tables.add("corporate_registry")
+            self._record_source_access("corporate_registry")
         elif action.kind == ActionKind.QUERY_MEDICARE:
-            self._queried_tables.update({"carrier_claims", "beneficiary_summary"})
+            self._record_source_access("beneficiary_summary")
+            self._record_source_access("carrier_claims")
+        elif action.kind == ActionKind.SQL_QUERY:
+            self._trace_sql_statement(action.sql_statement or "")
         elif action.kind in (ActionKind.OCR_DOCUMENT, ActionKind.COMPARE_DOC_VS_CLAIM):
             self._queried_tables.add("scanned_claims")
             self._queried_tables.add("evidence_documents")
-        elif action.kind in (ActionKind.SQL_QUERY, ActionKind.CODE_ACT):
-            code_or_sql = (action.sql_statement or action.python_code or "").lower()
-            for tbl in SQL_TABLES:
-                if tbl in code_or_sql:
-                    self._queried_tables.add(tbl)
-            for path_token in FILESYSTEM_EVIDENCE_DIRS:
-                if path_token in code_or_sql:
-                    self._queried_tables.add(path_token)
+            if action.kind == ActionKind.COMPARE_DOC_VS_CLAIM:
+                self._record_source_access("carrier_claims")
 
         # CoT tracking
         if action.think_trace:
@@ -255,6 +325,8 @@ class FraudHunterEnvironment(Environment):
             submitted=self._submitted,
             step_count=self._state.step_count,
             proof_trace=self._proof_trace,
+            source_access_callback=self._record_source_access,
+            sql_trace_callback=self._trace_sql_statement,
         )
 
         self._proof_trace = out.proof_trace
@@ -265,12 +337,16 @@ class FraudHunterEnvironment(Environment):
             self._hallucination_count += 1
 
         # Fold positive signals into persistent sets
-        if action.kind == ActionKind.EXTRACT_ENTITY and action.extracted_name:
+        if (action.kind == ActionKind.EXTRACT_ENTITY and action.extracted_name
+                and any(hit.startswith("extract=") for hit in out.hits)):
             self._extracted.add(action.extracted_name.lower())
-        elif action.kind == ActionKind.LINK_SHELL and action.child_entity and action.parent_entity:
+        elif (action.kind == ActionKind.LINK_SHELL and action.child_entity and action.parent_entity
+              and any(hit.startswith("shell_link=") for hit in out.hits)):
             self._linked.add((action.child_entity.lower(), action.parent_entity.lower()))
         elif (action.kind == ActionKind.CLAIM_CONTRADICTION
-              and action.evidence_a and action.evidence_b):
+              and action.evidence_a and action.evidence_b
+              and any(hit.startswith("contradiction=") or hit.startswith("contradiction_fuzzy=")
+                      for hit in out.hits)):
             self._contradictions.add((action.evidence_a.lower(), action.evidence_b.lower()))
         elif action.kind == ActionKind.SUBMIT_CASE:
             self._submitted = True
@@ -292,6 +368,7 @@ class FraudHunterEnvironment(Environment):
 
         return FraudHunterObservation(
             tool_output=out.tool_output,
+            base64_document=getattr(out, "base64_document", None),
             grader_feedback=out.feedback,
             evidence_graph=self._build_evidence_graph(),
             step_count=self._state.step_count,

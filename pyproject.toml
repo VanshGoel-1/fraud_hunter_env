@@ -30,12 +30,14 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=4.0.0",
     "trl>=0.8.0",
     "unsloth>=2024.3",
     "vllm>=0.4.0",
     "datasets>=2.16.0",
+]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
 ]
 
 [project.scripts]
@@ -49,4 +51,8 @@ packages = ["fraud_hunter_env", "fraud_hunter_env.server", "fraud_hunter_env.dat
 package-dir = { "fraud_hunter_env" = ".", "fraud_hunter_env.server" = "server", "fraud_hunter_env.data_gen" = "data_gen" }
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["..", "."]
+testpaths = ["tests"]
+markers = [
+    "smoke: end-to-end smoke validations over the live HTTP path",
+]

@@ -31,6 +31,7 @@ class FraudHunterEnv(EnvClient[FraudHunterAction, FraudHunterObservation, State]
         observation = FraudHunterObservation(
             case_brief=obs_data.get("case_brief"),
             tool_output=obs_data.get("tool_output"),
+            base64_document=obs_data.get("base64_document"),
             grader_feedback=obs_data.get("grader_feedback"),
             evidence_graph=obs_data.get("evidence_graph"),
             step_count=obs_data.get("step_count", 0),

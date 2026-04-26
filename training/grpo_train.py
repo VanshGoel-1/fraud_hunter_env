@@ -17,12 +17,15 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # Put the repo root (parent of the `fraud_hunter_env` package) on sys.path so
 # `fraud_hunter_env.*` resolves whether or not the package has been installed.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from fraud_hunter_env.models import FraudHunterAction, FraudHunterObservation
+
+TRAIN_SEED_RANGE = (0, 8000)
 
 # Heavy ML deps live in the [dev] extra and are only installed in Colab/GPU
 # environments. Import optimistically; fall back to None so lint and CPU-only
@@ -38,6 +41,11 @@ except ImportError:
     GRPOTrainer = None  # type: ignore[assignment,misc]
     Dataset = None  # type: ignore[assignment,misc]
 
+try:
+    import torch
+except ImportError:
+    torch = None  # type: ignore[assignment]
+
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -49,7 +57,7 @@ OUTPUT_DIR      = "outputs"
 
 # ── Environment Reward Function ───────────────────────────────────────────────
 
-def environment_reward(prompts: list[str], completions: list[str], **kwargs) -> list[float]:
+def environment_reward(prompts: list[str], completions: list[Any], **kwargs) -> list[float]:
     """
     RLVR reward function: each completion is parsed as a sequence of JSON
     actions and executed against the Fraud Hunter environment.
@@ -61,7 +69,7 @@ def environment_reward(prompts: list[str], completions: list[str], **kwargs) -> 
 
     rewards = []
     for completion in completions:
-        env = FraudHunterEnvironment()
+        env = FraudHunterEnvironment(case_seed_range=TRAIN_SEED_RANGE)
         env.reset()
         episode_reward = 0.0
 
@@ -83,7 +91,7 @@ def environment_reward(prompts: list[str], completions: list[str], **kwargs) -> 
     return rewards
 
 
-def _parse_actions_from_completion(text: str) -> list[dict]:
+def _parse_actions_from_completion(raw_completion: Any) -> list[dict]:
     """
     Extract JSON action payloads from an LLM completion.
     Handles <think>...</think> blocks and JSON interleaved text, including
@@ -92,6 +100,27 @@ def _parse_actions_from_completion(text: str) -> list[dict]:
     """
     import re
     actions: list[dict] = []
+
+    # TRL/Unsloth can pass chat-shaped completions (list/dict) instead of a plain string.
+    if isinstance(raw_completion, str):
+        text = raw_completion
+    elif isinstance(raw_completion, list):
+        parts: list[str] = []
+        for item in raw_completion:
+            if isinstance(item, dict):
+                content = item.get("content", "")
+                if isinstance(content, list):
+                    parts.extend(str(x.get("text", "")) if isinstance(x, dict) else str(x) for x in content)
+                else:
+                    parts.append(str(content))
+            else:
+                parts.append(str(item))
+        text = "\n".join(p for p in parts if p)
+    elif isinstance(raw_completion, dict):
+        text = str(raw_completion.get("content", ""))
+    else:
+        text = str(raw_completion)
+
     think_pattern = re.compile(r'<think>(.*?)</think>', re.DOTALL)
     think_traces = think_pattern.findall(text)
     think_idx = 0
@@ -153,7 +182,7 @@ def load_dataset(n_episodes: int = 100):
     """
     from fraud_hunter_env.server.fraud_hunter_env_environment import FraudHunterEnvironment
 
-    env = FraudHunterEnvironment()
+    env = FraudHunterEnvironment(case_seed_range=TRAIN_SEED_RANGE)
     prompts = []
     for _ in range(n_episodes):
         obs = env.reset()
@@ -164,9 +193,39 @@ def load_dataset(n_episodes: int = 100):
     return Dataset.from_list(prompts)
 
 
+def _can_train_with_unsloth() -> bool:
+    return bool(
+        FastLanguageModel is not None
+        and GRPOConfig is not None
+        and GRPOTrainer is not None
+        and Dataset is not None
+        and torch is not None
+        and torch.cuda.is_available()
+    )
+
+
+def _run_cpu_smoke_test() -> None:
+    from fraud_hunter_env.server.fraud_hunter_env_environment import FraudHunterEnvironment
+
+    env = FraudHunterEnvironment(case_seed_range=TRAIN_SEED_RANGE)
+    obs = env.reset()
+    print("CPU/no-GPU fallback: training skipped.")
+    print(f"Verified environment reset on train split {TRAIN_SEED_RANGE}: tier={obs.difficulty_tier}")
+
+
 # ── Main Training Loop ───────────────────────────────────────────────────────
 
 def main():
+    if os.environ.get("FRAUD_HUNTER_TRAIN") != "1":
+        _run_cpu_smoke_test()
+        print("Set FRAUD_HUNTER_TRAIN=1 on a CUDA host to run GRPO.")
+        return
+
+    if not _can_train_with_unsloth():
+        _run_cpu_smoke_test()
+        print("CUDA/Unsloth stack unavailable; skipping GRPO execution.")
+        return
+
     print(f"Loading model: {MODEL_NAME}")
 
     model, tokenizer = FastLanguageModel.from_pretrained(
@@ -211,7 +270,7 @@ def main():
         lr_scheduler_type="cosine",
         # Training
         logging_steps=1,
-        bf16=True,
+        fp16=True,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
         num_generations=8,
@@ -236,13 +295,8 @@ def main():
     )
 
     print("Starting GRPO training (DAPO loss, clip-higher, zero KL)...")
-    # Set FRAUD_HUNTER_TRAIN=1 (e.g. on a GPU host) to actually run training.
-    # CPU/no-GPU defaults to a no-op so this script stays import-safe.
-    if os.environ.get("FRAUD_HUNTER_TRAIN") == "1":
-        trainer.train()
-        print(f"Training complete. Checkpoints in {OUTPUT_DIR}/")
-    else:
-        print("Training setup verified. Set FRAUD_HUNTER_TRAIN=1 to execute.")
+    trainer.train()
+    print(f"Training complete. Checkpoints in {OUTPUT_DIR}/")
 
 
 if __name__ == "__main__":

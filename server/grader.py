@@ -27,11 +27,12 @@ Format-First Hierarchical Curriculum (7 layers):
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from fraud_hunter_env.models import (
     ActionKind, ContradictionKind,
@@ -90,6 +91,67 @@ def _evidence_path_referenced(text: str) -> bool:
     t = text.lower()
     return ("scanned_claims/" in t) or t.startswith("doc_") or t.endswith(".pdf")
 
+
+_BENE_ID_RE = re.compile(r"\bbene[_-]?[0-9]+\b", re.IGNORECASE)
+_CLAIM_ID_RE = re.compile(r"\b(?:c|clm|claim)[_:-]?[a-z0-9_]+\b", re.IGNORECASE)
+
+
+def _normalize_ocr_digits(text: str) -> str:
+    return (
+        text.upper()
+        .replace("O", "0")
+        .replace("I", "1")
+        .replace("L", "1")
+        .replace("S", "5")
+        .replace("B", "8")
+    )
+
+
+def _canonicalize_evidence_token(value: str) -> str:
+    raw = (value or "").strip().lower()
+    if not raw:
+        return ""
+    if raw.startswith("beneficiary:") or raw.startswith("claim:"):
+        return raw
+    if raw.startswith("provider_npi:"):
+        prefix, _, suffix = raw.partition(":")
+        return f"{prefix}:{_normalize_ocr_digits(suffix).lower()}"
+
+    bene_match = _BENE_ID_RE.search(raw)
+    if bene_match:
+        token = bene_match.group(0).upper().replace("-", "_")
+        return f"beneficiary:{token}".lower()
+
+    if raw.startswith("c_") or raw.startswith("claim_") or raw.startswith("clm_"):
+        return f"claim:{raw.replace('claim_', 'c_')}".lower()
+
+    claim_match = _CLAIM_ID_RE.search(raw)
+    if claim_match:
+        token = claim_match.group(0).replace("claim:", "")
+        token = token.replace("claim_", "c_", 1)
+        token = token.replace("clm_", "c_", 1)
+        return f"claim:{token}".lower()
+
+    return raw
+
+
+def _contradiction_match_type(
+    evidence_a: str,
+    evidence_b: str,
+    kind: str,
+    ground_truth: set[tuple[str, str, str]],
+) -> str:
+    raw_pair = (evidence_a.lower(), evidence_b.lower(), kind)
+    if raw_pair in ground_truth or (raw_pair[1], raw_pair[0], kind) in ground_truth:
+        return "exact"
+
+    canonical_a = _canonicalize_evidence_token(evidence_a)
+    canonical_b = _canonicalize_evidence_token(evidence_b)
+    canonical_pair = (canonical_a, canonical_b, kind)
+    if canonical_pair in ground_truth or (canonical_pair[1], canonical_pair[0], kind) in ground_truth:
+        return "fuzzy"
+    return "none"
+
 _COT_OPEN_RE  = re.compile(r"<think>", re.IGNORECASE)
 _COT_CLOSE_RE = re.compile(r"</think>", re.IGNORECASE)
 _WORD_RE      = re.compile(r"\b\w+\b")
@@ -101,6 +163,7 @@ class GraderOutput:
     done: bool
     feedback: str
     tool_output: Optional[str] = None
+    base64_document: Optional[str] = None
     hits: list[str] = field(default_factory=list)       # human-readable reward ledger
     proof_trace: list[str] = field(default_factory=list) # for causal chain scoring
 
@@ -251,6 +314,8 @@ def grade(
     submitted: bool,
     step_count: int = 0,
     proof_trace: Optional[list[str]] = None,
+    source_access_callback: Optional[Callable[[str], None]] = None,
+    sql_trace_callback: Optional[Callable[[str], None]] = None,
 ) -> GraderOutput:
     """
     Score a single step. Caller owns state mutation; grader only reads.
@@ -320,17 +385,34 @@ def grade(
                 hits.append(f"sql_rows_bonus={min(rows * 0.5, 5.0):.1f}")
 
     elif action.kind == ActionKind.CODE_ACT:
-        stdout, err, rows = execute_code(action.python_code or "", case.conn, case_dir=str(case.db_path.parent))
+        stdout, err, stats = execute_code(
+            action.python_code or "",
+            case.conn,
+            case_dir=str(case.db_path.parent),
+            on_access=source_access_callback,
+            on_sql=sql_trace_callback,
+        )
         if err:
             tool_output = f"SANDBOX_ERROR:\n{err}"
             feedback_parts.append("codeact_error")
         else:
             tool_output = stdout or "(no output)"
+            rows = int(stats.get("rows_returned", 0))
+            files_read = int(stats.get("files_read", 0))
+            directories_listed = int(stats.get("directories_listed", 0))
+            bonus = 0.0
             if rows > 0:
-                bonus = CODEACT_BONUS * min(rows, 5)  # cap at 5 rows
+                bonus += CODEACT_BONUS * min(rows, 5)
+            if files_read > 0:
+                bonus += min(files_read, 3) * 2.5
+            if directories_listed > 0:
+                bonus += min(directories_listed, 2) * 1.0
+            if bonus > 0:
                 reward += bonus
                 hits.append(f"codeact_bonus={bonus:.1f}")
-            feedback_parts.append(f"codeact_ok({rows}_rows)")
+            feedback_parts.append(
+                f"codeact_ok(rows={rows},files={files_read},dirs={directories_listed})"
+            )
 
     elif action.kind == ActionKind.EXTRACT_ENTITY:
         name = (action.extracted_name or "").strip()
@@ -383,13 +465,15 @@ def grade(
             (c["evidence_a"].lower(), c["evidence_b"].lower(), c["kind"])
             for c in case.ground_truth("contradiction")
         }
-        match = (a, b, kind) in gt_ctr or (b, a, kind) in gt_ctr
+        match_type = _contradiction_match_type(a, b, kind, gt_ctr)
         already_seen = (a, b) in contradictions or (b, a) in contradictions
 
-        if match and not already_seen:
+        if match_type != "none" and not already_seen:
             # Layer 7: typology multiplier
             multiplier = TYPOLOGY_MULTIPLIERS.get(kind, 1.0)
             typology_reward = CONTRADICTION_REWARD * multiplier
+            if match_type == "fuzzy":
+                typology_reward *= 0.4
             # Multi-modal proof bonus: if either side cites a PDF, layer
             # PDF_CHAIN_MULTIPLIER on top of the typology multiplier.
             if _evidence_path_referenced(a) or _evidence_path_referenced(b):
@@ -397,8 +481,12 @@ def grade(
                 hits.append(f"pdf_chain×{PDF_CHAIN_MULTIPLIER}")
                 feedback_parts.append("pdf_chain_proof")
             reward += typology_reward
-            hits.append(f"contradiction={typology_reward:.1f}(×{multiplier})")
-            feedback_parts.append(f"contradiction_confirmed:{kind}(×{multiplier})")
+            if match_type == "exact":
+                hits.append(f"contradiction={typology_reward:.1f}(×{multiplier})")
+                feedback_parts.append(f"contradiction_confirmed:{kind}(×{multiplier})")
+            else:
+                hits.append(f"contradiction_fuzzy={typology_reward:.1f}(×{multiplier})")
+                feedback_parts.append(f"contradiction_fuzzy_match:{kind}(×{multiplier})")
             new_proof_trace.append(f"contradiction:{kind}:{a}↔{b}")
         else:
             feedback_parts.append(f"contradiction_unconfirmed:{kind}")
@@ -422,7 +510,17 @@ def grade(
             else:
                 # Cap the output at 2000 chars to keep the agent's context tight.
                 tool_output = (text or "")[:2000]
+                encoded = base64.b64encode(pdf_abs.read_bytes()).decode("ascii")
                 feedback_parts.append(f"ocr_ok({len(text or '')}_chars)")
+                return GraderOutput(
+                    reward=round(reward, 4),
+                    done=done,
+                    feedback="; ".join(feedback_parts) or "noop",
+                    tool_output=tool_output,
+                    base64_document=encoded,
+                    hits=hits,
+                    proof_trace=new_proof_trace,
+                )
 
     elif action.kind == ActionKind.COMPARE_DOC_VS_CLAIM:
         claim_id = action.claim_id or ""
@@ -545,9 +643,18 @@ def case_outcome(
     """Returns (won, partial)."""
     gt_entities = {e["name"].lower() for e in case.ground_truth("entity")}
     gt_links    = {(l["child"].lower(), l["parent"].lower()) for l in case.ground_truth("shell_link")}
-    gt_ctr      = {(c["evidence_a"].lower(), c["evidence_b"].lower()) for c in case.ground_truth("contradiction")}
+    gt_ctr      = {
+        (
+            _canonicalize_evidence_token(c["evidence_a"]),
+            _canonicalize_evidence_token(c["evidence_b"]),
+        )
+        for c in case.ground_truth("contradiction")
+    }
 
-    norm_ctr    = {tuple(sorted(pair)) for pair in contradictions}
+    norm_ctr    = {
+        tuple(sorted((_canonicalize_evidence_token(pair[0]), _canonicalize_evidence_token(pair[1]))))
+        for pair in contradictions
+    }
     gt_ctr_norm = {tuple(sorted(pair)) for pair in gt_ctr}
 
     entities_hit = len(gt_entities & extracted)

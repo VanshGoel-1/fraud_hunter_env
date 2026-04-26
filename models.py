@@ -224,6 +224,10 @@ class FraudHunterObservation(Observation):
 
     case_brief:       Optional[str]            = Field(default=None)
     tool_output:      Optional[str]            = Field(default=None)
+    base64_document:  Optional[str]            = Field(
+        default=None,
+        description="Base64-encoded document payload for OCR/vision-capable agents",
+    )
     grader_feedback:  Optional[str]            = Field(default=None)
     evidence_graph:   Optional[Dict[str, Any]] = Field(
         default=None, description="Accumulated evidence: entities, links, contradictions"

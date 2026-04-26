@@ -13,7 +13,7 @@ Security boundaries:
 
 This implements the CodeAct paradigm where the agent can write arbitrary
 SQL-backed Python to extract, join and assert data in a single step,
-earning CODEACT_BONUS per successful DataFrame row returned.
+earning reward for successful database access and filesystem evidence reads.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import sqlite3
 import threading
 import traceback
 from contextlib import redirect_stdout
-from typing import Optional
+from typing import Callable, Optional
 
 try:
     import pandas as pd
@@ -140,15 +140,17 @@ def execute_code(
     code: str,
     conn: sqlite3.Connection,
     case_dir: Optional[str] = None,
-) -> tuple[str, Optional[str], int]:
+    on_access: Optional[Callable[[str], None]] = None,
+    on_sql: Optional[Callable[[str], None]] = None,
+) -> tuple[str, Optional[str], dict[str, int]]:
     """
     Execute `code` in a restricted sandbox with access to `conn`.
 
     Returns:
-        (stdout_output, error_message, rows_returned)
+        (stdout_output, error_message, execution_stats)
         - stdout_output: captured print() output, capped at _MAX_OUTPUT_CHARS
         - error_message: None on success, traceback string on error
-        - rows_returned: number of DataFrame rows detected in output (for bonus scoring)
+        - execution_stats: counters describing successful DB/file access
 
     Path-confinement: all filesystem helpers (`open`, `listdir`, `path_exists`)
     resolve relative paths against `case_dir` (an absolute path). The sandbox
@@ -157,7 +159,11 @@ def execute_code(
     """
     safety_err = _check_code_safety(code)
     if safety_err:
-        return "", f"SECURITY_VIOLATION: {safety_err}", 0
+        return "", f"SECURITY_VIOLATION: {safety_err}", {
+            "rows_returned": 0,
+            "files_read": 0,
+            "directories_listed": 0,
+        }
 
     # Inject PDF dependencies if available
     try:
@@ -178,6 +184,12 @@ def execute_code(
     # needing `import os` (which the forbidden-pattern scanner would reject).
     # `case_dir` MUST be an absolute path; the environment guarantees this.
     _base = os.path.abspath(case_dir) if case_dir else None
+    files_read = 0
+    directories_listed = 0
+
+    def _note_access(path: str) -> None:
+        if on_access is not None:
+            on_access(path)
 
     def _resolve_inside_case(path: str) -> str:
         """Resolve `path` (rel or abs) and confirm it stays inside _base.
@@ -191,7 +203,12 @@ def execute_code(
         return target
 
     def _safe_listdir(subdir: str = ".") -> list[str]:
-        return sorted(os.listdir(_resolve_inside_case(subdir)))
+        nonlocal directories_listed
+        resolved = _resolve_inside_case(subdir)
+        directories_listed += 1
+        rel = os.path.relpath(resolved, _base) if _base else resolved
+        _note_access(rel)
+        return sorted(os.listdir(resolved))
 
     def _safe_path_join(*parts: str) -> str:
         """Join path parts, returning an ABSOLUTE path rooted at case_dir.
@@ -216,10 +233,15 @@ def execute_code(
             return False
 
     def _safe_open(path: str, mode: str = "r", *args, **kwargs):
+        nonlocal files_read
         # Read-only access only. Reject any write/append/update modes.
         if any(c in mode for c in ("w", "a", "+", "x")):
             raise PermissionError(f"sandbox open() is read-only; mode={mode!r} rejected")
-        return open(_resolve_inside_case(path), mode, *args, **kwargs)
+        resolved = _resolve_inside_case(path)
+        files_read += 1
+        rel = os.path.relpath(resolved, _base) if _base else resolved
+        _note_access(rel)
+        return open(resolved, mode, *args, **kwargs)
 
     # Pre-injected stdlib modules — pure-python, no I/O, agent doesn't need to
     # import them (and import statements are now rejected by the AST check).
@@ -254,28 +276,45 @@ def execute_code(
     def _run() -> None:
         nonlocal error, rows_returned
         try:
+            if on_sql is not None:
+                conn.set_trace_callback(on_sql)
             with redirect_stdout(stdout_capture):
                 exec(code, namespace)  # noqa: S102
-            # Count rows if agent assigned a DataFrame to `result`
+            # Count rows if agent assigned a value to `result`
             if _HAS_PANDAS and isinstance(namespace.get("result"), pd.DataFrame):
                 rows_returned = len(namespace["result"])
                 with redirect_stdout(stdout_capture):
                     print(namespace["result"].to_string(max_rows=20))
+            elif isinstance(namespace.get("result"), (list, tuple, set, dict)):
+                rows_returned = len(namespace["result"])
+            elif namespace.get("result") not in (None, ""):
+                rows_returned = 1
         except Exception:
             error = traceback.format_exc()
+        finally:
+            if on_sql is not None:
+                conn.set_trace_callback(None)
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     thread.join(timeout=_TIMEOUT_SECONDS)
 
     if thread.is_alive():
-        return "", f"TIMEOUT: Code exceeded {_TIMEOUT_SECONDS}s limit", 0
+        return "", f"TIMEOUT: Code exceeded {_TIMEOUT_SECONDS}s limit", {
+            "rows_returned": 0,
+            "files_read": files_read,
+            "directories_listed": directories_listed,
+        }
 
     output = stdout_capture.getvalue()
     if len(output) > _MAX_OUTPUT_CHARS:
         output = output[:_MAX_OUTPUT_CHARS] + "\n... [output truncated]"
 
-    return output, error, rows_returned
+    return output, error, {
+        "rows_returned": rows_returned,
+        "files_read": files_read,
+        "directories_listed": directories_listed,
+    }
 
 
 def execute_sql(

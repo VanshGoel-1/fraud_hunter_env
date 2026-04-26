@@ -44,17 +44,13 @@ class AgentProfile:
         if len(self.reward_history) < 3:
             return  # Need at least 3 episodes to assess
         avg = statistics.mean(self.reward_history)
-        # Thresholds calibrated to the current scripted-expert ceiling (~+18).
-        # Once a fully-trained policy lands and pushes per-episode reward into
-        # the hundreds (proof-chain bonuses + case_won rewards), raise these
-        # back toward the [50, 150, 400, 800] ELO-inspired schedule.
-        if avg >= 30.0:
+        if avg >= 800.0:
             self.current_tier = 5
-        elif avg >= 20.0:
+        elif avg >= 400.0:
             self.current_tier = 4
-        elif avg >= 12.0:
+        elif avg >= 150.0:
             self.current_tier = 3
-        elif avg >= 5.0:
+        elif avg >= 50.0:
             self.current_tier = 2
         else:
             self.current_tier = 1

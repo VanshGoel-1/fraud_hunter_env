@@ -49,3 +49,14 @@ else:
     step_obs = env.step(action)
     assert "PDF Extracted:" in step_obs.tool_output or "No PDFs found" in step_obs.tool_output
     assert "SECURITY_VIOLATION" not in step_obs.tool_output
+
+def test_agentic_recall_ignores_sql_substrings_without_access():
+    env = FraudHunterEnvironment(case_bank_dir=None)
+    env.reset()
+    obs = env.step(FraudHunterAction.model_validate({
+        "kind": "sql_query",
+        "sql_statement": "SELECT 'corporate_registry', 'beneficiary_summary'",
+        "think_trace": "<think>Test literal strings without touching any tables.</think>",
+    }))
+    assert obs.info is not None
+    assert obs.info["agentic_recall"] == 0.0

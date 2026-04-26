@@ -107,6 +107,18 @@ def test_typology_multiplier(demo_case):
     assert out.reward > 0
     assert "contradiction_confirmed" in out.feedback
 
+def test_contradiction_fuzzy_prefix_match(demo_case):
+    action = FraudHunterAction.model_validate({
+        "kind": "claim_contradiction",
+        "evidence_a": "BENE_001",
+        "evidence_b": "C003",
+        "contradiction_kind": "dead_patient_claim",
+        "think_trace": "<think>The patient is dead but the claim was billed later.</think>",
+    })
+    out = grade(action, demo_case, set(), set(), set(), False, step_count=1)
+    assert out.reward > 0
+    assert "contradiction_fuzzy_match" in out.feedback
+
 def test_sql_query_action(demo_case):
     action = FraudHunterAction.model_validate({
         "kind": "sql_query",
@@ -126,3 +138,31 @@ def test_duplicate_query_penalty(demo_case):
     grade(action, demo_case, set(), set(), set(), False, step_count=1)
     out2 = grade(action, demo_case, set(), set(), set(), False, step_count=2)
     assert "duplicate_query" in out2.feedback
+
+def test_code_act_rewards_file_reads(demo_case, tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    comms_dir = case_dir / "intercepted_comms"
+    comms_dir.mkdir()
+    (comms_dir / "email_00.txt").write_text("smoking gun", encoding="utf-8")
+    demo_case.db_path = case_dir / "medicare_records.db"
+
+    action = FraudHunterAction.model_validate({
+        "kind": "code_act",
+        "python_code": "print(open('intercepted_comms/email_00.txt').read())",
+        "think_trace": "<think>Read the intercepted email.</think>",
+    })
+    accessed: list[str] = []
+    out = grade(
+        action,
+        demo_case,
+        set(),
+        set(),
+        set(),
+        False,
+        step_count=1,
+        source_access_callback=accessed.append,
+    )
+    assert out.reward > STEP_DECAY
+    assert "smoking gun" in (out.tool_output or "")
+    assert "intercepted_comms/email_00.txt" in accessed
