@@ -36,10 +36,27 @@ from fraud_hunter_env.server.fraud_hunter_env_environment import FraudHunterEnvi
 from fraud_hunter_env.server.metrics_bus import InMemoryMetricsBus
 
 
-# ── Episode metrics store (in-memory, shared across all sessions) ────────────
-# NOTE: This is per-worker. For multi-worker uvicorn, migrate to Redis (Phase 9.5).
+# ── Episode metrics store (in-memory + JSONL persistence) ────────────────────
+# Persistence lets the dashboard show real history across server restarts
+# and on a fresh HF Spaces container (if assets/metrics_history.jsonl is
+# shipped in the image). Set FRAUD_HUNTER_METRICS_HISTORY="" to disable,
+# or to a custom path to relocate. Multi-worker correctness still requires
+# Redis (Phase 9.5).
 
-metrics_bus = InMemoryMetricsBus()
+import os as _os
+
+_METRICS_PERSIST_DEFAULT = (
+    Path(__file__).resolve().parent.parent / "assets" / "metrics_history.jsonl"
+)
+_metrics_persist_env = _os.environ.get("FRAUD_HUNTER_METRICS_HISTORY")
+_metrics_persist_path = (
+    None
+    if _metrics_persist_env == ""
+    else Path(_metrics_persist_env) if _metrics_persist_env
+    else _METRICS_PERSIST_DEFAULT
+)
+
+metrics_bus = InMemoryMetricsBus(persist_path=_metrics_persist_path)
 
 
 def record_episode_metrics(metrics: dict[str, Any]) -> None:

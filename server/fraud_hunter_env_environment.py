@@ -15,10 +15,12 @@ to enable the agent to reason over its own prior discoveries.
 
 from __future__ import annotations
 
+import gc
 import random
 import shutil
 import sqlite3
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 from uuid import uuid4
@@ -88,7 +90,13 @@ class FraudHunterEnvironment(Environment):
         rng_seed: int | None = None,
         on_episode_end: Optional[Callable[[dict[str, Any]], None]] = None,
     ):
-        self._sandbox_dir = tempfile.TemporaryDirectory()
+        # Manual tempdir (no auto-finalizer): tempfile.TemporaryDirectory's
+        # GC-time cleanup raises noisy PermissionErrors on Windows when SQLite
+        # has briefly held the medicare_records.db handle past conn.close().
+        # We own the lifecycle via close()/__del__ and use a retry-then-ignore
+        # rmtree so cleanup is silent and best-effort on every platform.
+        self._sandbox_dir: str = tempfile.mkdtemp(prefix="fhe_")
+        self._closed: bool = False
         bank = Path(case_bank_dir) if case_bank_dir else _DEFAULT_CASE_BANK
         self._bank_dir: Optional[Path] = bank if bank.is_dir() else None
         self._rng = random.Random(rng_seed)
@@ -148,7 +156,7 @@ class FraudHunterEnvironment(Environment):
         # Get current tier from RLVE
         self._difficulty_tier = self._diff_mgr.get_tier(self._session_id)
 
-        sandbox_path = Path(self._sandbox_dir.name)
+        sandbox_path = Path(self._sandbox_dir)
 
         # Prefer pre-built bank when available; fall back to on-the-fly generation.
         bank_pick: Optional[Path] = None
@@ -310,3 +318,56 @@ class FraudHunterEnvironment(Environment):
         the private ``_case`` attribute.
         """
         return self._case
+
+    def close(self) -> None:
+        """Idempotent best-effort cleanup. Safe to call multiple times.
+
+        Closes the active SQLite connection, drops the Python reference,
+        forces a GC cycle, then rmtrees the sandbox dir. On Windows the
+        sqlite handle can briefly outlive ``conn.close()``, so we retry the
+        rmtree a few times before falling back to ``ignore_errors=True``.
+        Cleanup never raises — finalisers can't propagate exceptions and
+        leaking the temp dir is preferable to a crash.
+        """
+        if self._closed:
+            return
+        self._closed = True
+
+        # 1) Close active case → drops the SQLite conn ref.
+        if self._case is not None:
+            try:
+                self._case.close()
+            except Exception:
+                pass
+            self._case = None
+
+        # 2) Force a GC cycle so any lingering sqlite3.Connection refs are
+        #    released before we try to delete the underlying .db file.
+        try:
+            gc.collect()
+        except Exception:
+            pass
+
+        # 3) Retry rmtree to win the Windows file-lock race; fall back to
+        #    ignore_errors so we never raise from cleanup.
+        sandbox = self._sandbox_dir
+        for attempt in range(5):
+            try:
+                shutil.rmtree(sandbox)
+                return
+            except FileNotFoundError:
+                return
+            except (PermissionError, OSError):
+                time.sleep(0.05 * (attempt + 1))
+        try:
+            shutil.rmtree(sandbox, ignore_errors=True)
+        except Exception:
+            pass
+
+    def __del__(self):
+        # Defensive: if openenv-core or a test harness drops the env without
+        # calling close(), the GC path still cleans up silently.
+        try:
+            self.close()
+        except Exception:
+            pass
