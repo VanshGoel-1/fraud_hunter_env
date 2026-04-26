@@ -122,7 +122,9 @@ class CaseHandle:
 
 def _demo_case() -> CaseHandle:
     """In-memory demo case following CMS SynPUF schema."""
-    conn = sqlite3.connect(":memory:")
+    # check_same_thread=False — see fraud_hunter_env_environment.py for rationale
+    # (the CodeAct sandbox executes user code in a worker thread).
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
     cur = conn.cursor()
     cur.executescript("""
         CREATE TABLE beneficiary_summary (

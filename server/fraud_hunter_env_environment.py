@@ -173,7 +173,12 @@ class FraudHunterEnvironment(Environment):
             generate_multimodal_aks_case(sandbox_path, case_id, self._difficulty_tier)
 
         db_path = sandbox_path / case_id / "medicare_records.db"
-        conn = sqlite3.connect(str(db_path))
+        # check_same_thread=False: the CodeAct sandbox runs `exec` in a worker
+        # thread (for timeout enforcement), so the connection must be usable
+        # outside the thread that created it. Access is sequential (sandbox
+        # joins the worker before returning), so SQLite's own thread safety
+        # guarantees still hold.
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._case = CaseHandle(
             case_id=case_id, db_path=db_path, conn=conn, tier=self._difficulty_tier
         )
