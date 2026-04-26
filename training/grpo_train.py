@@ -194,7 +194,6 @@ def main():
     # DAPO configuration with clip-higher and zero KL
     training_args = GRPOConfig(
         use_vllm=True,
-        vllm_device="cuda:0",
         vllm_gpu_memory_utilization=0.4,
         # DAPO loss
         loss_type="dapo",
