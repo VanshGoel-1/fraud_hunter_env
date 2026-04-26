@@ -1,0 +1,22 @@
+# Training artifacts — never upload to HF Spaces
+outputs/
+wandb/
+runs/
+
+
+# Case bank SQLite files — large, regenerated at runtime or via the notebook
+data/case_bank/
+data/uploads/
+
+
+# Python / tooling
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+*.DS_Store

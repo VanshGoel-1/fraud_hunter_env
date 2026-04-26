@@ -1,5 +1,30 @@
-.venv
-__pycache__
+# Training artifacts — keep Docker context small
+outputs/
+wandb/
+runs/
+lora_final/
+
+# Case bank SQLite files — large, not needed to build the image
+data/case_bank/
+data/uploads/
+
+# Assets generated at training time
+assets/training_curves.png
+assets/training_log.csv
+assets/eval_results.json
+assets/metrics_history.jsonl
+
+# Python / tooling
+.venv/
+__pycache__/
 *.pyc
-.git
+*.pyo
 .env
+
+# Version control
+.git/
+
+# IDE / OS
+.idea/
+.vscode/
+*.DS_Store

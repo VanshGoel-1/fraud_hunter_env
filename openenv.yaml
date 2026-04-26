@@ -4,4 +4,6 @@ type: space
 runtime: fastapi
 app: fraud_hunter_env.server.app:app
 port: 8000
-
+action: FraudHunterAction
+observation: FraudHunterObservation
+description: Government Fraud Hunter AI — OpenEnv-compliant RL environment for qui tam fraud investigations.

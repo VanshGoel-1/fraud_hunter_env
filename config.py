@@ -35,9 +35,18 @@ _DEFAULT_ALLOWED_ORIGINS = (
 
 
 def allowed_origins() -> list[str]:
-    """CORS allowlist (env: ``ALLOWED_ORIGINS`` — comma-separated)."""
-    raw = os.environ.get("ALLOWED_ORIGINS", _DEFAULT_ALLOWED_ORIGINS)
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    """CORS allowlist (env: ``ALLOWED_ORIGINS`` — comma-separated).
+
+    Defaults to ``*`` on HF Spaces (detected via ``SPACE_ID``) so the
+    built-in Playground UI — served from huggingface.co — can reach the
+    server.  Override with ``ALLOWED_ORIGINS`` to tighten in production.
+    """
+    raw = os.environ.get("ALLOWED_ORIGINS")
+    if raw:
+        return [o.strip() for o in raw.split(",") if o.strip()]
+    if os.environ.get("SPACE_ID"):
+        return ["*"]
+    return [o.strip() for o in _DEFAULT_ALLOWED_ORIGINS.split(",") if o.strip()]
 
 
 def api_keys() -> set[str]:
