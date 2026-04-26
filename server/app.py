@@ -72,6 +72,8 @@ _metrics_persist_path = (
 metrics_bus = InMemoryMetricsBus(persist_path=_metrics_persist_path)
 _SEED_RANGE_BY_SCOPE: dict[str, tuple[int, int] | None] = {"global": None}
 _SEED_SCOPE_LOCK = threading.Lock()
+_HTTP_SESSION_ENVS: dict[str, FraudHunterEnvironment] = {}
+_HTTP_SESSION_LOCK = threading.Lock()
 _REQUEST_SEED_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_seed_scope",
     default="global",
@@ -96,6 +98,27 @@ def _active_seed_range() -> tuple[int, int] | None:
         if scoped is not None:
             return scoped
         return _SEED_RANGE_BY_SCOPE.get("global")
+
+
+def _http_session_key(request: Request) -> str:
+    explicit = (request.headers.get("x-session-id") or "").strip()
+    if explicit:
+        return explicit
+    return _request_seed_scope(request)
+
+
+def _get_or_create_http_env(request: Request) -> FraudHunterEnvironment:
+    key = _http_session_key(request)
+    with _HTTP_SESSION_LOCK:
+        existing = _HTTP_SESSION_ENVS.get(key)
+        if existing is not None:
+            return existing
+        env = FraudHunterEnvironment(
+            on_episode_end=metrics_bus.record,
+            case_seed_range=_active_seed_range(),
+        )
+        _HTTP_SESSION_ENVS[key] = env
+        return env
 
 
 def record_episode_metrics(metrics: dict[str, Any]) -> None:
@@ -508,6 +531,8 @@ if _WEB_DIR is not None:
                 "health": "/health",
                 "reset": "/reset",
                 "step": "/step",
+                "session_reset": "/fraud_hunter/session_reset",
+                "session_step": "/fraud_hunter/session_step",
                 "agent_action": "/fraud_hunter/agent_action",
                 "agent_action_online": "/fraud_hunter/agent_action_online",
                 "nl_action": "/fraud_hunter/nl_action",
@@ -657,6 +682,37 @@ async def set_seed_range(payload: dict[str, int | None], request: Request):
     return {"scope": scope, "seed_min": seed_min, "seed_max": seed_max}
 
 
+@app.post("/fraud_hunter/session_reset")
+async def fraud_hunter_session_reset(request: Request):
+    env = _get_or_create_http_env(request)
+    obs = env.reset()
+    return {
+        "observation": obs.model_dump(exclude_none=True, mode="json"),
+        "reward": obs.reward,
+        "done": obs.done,
+    }
+
+
+@app.post("/fraud_hunter/session_step")
+async def fraud_hunter_session_step(payload: dict[str, Any], request: Request):
+    action_payload = payload.get("action")
+    if not isinstance(action_payload, dict):
+        return JSONResponse({"detail": "action must be a JSON object"}, status_code=400)
+
+    try:
+        action = FraudHunterAction.model_validate(action_payload)
+    except Exception as exc:
+        return JSONResponse({"detail": f"invalid action payload: {exc}"}, status_code=422)
+
+    env = _get_or_create_http_env(request)
+    obs = env.step(action)
+    return {
+        "observation": obs.model_dump(exclude_none=True, mode="json"),
+        "reward": obs.reward,
+        "done": obs.done,
+    }
+
+
 @app.post("/fraud_hunter/agent_action")
 async def fraud_hunter_agent_action(payload: dict[str, Any]):
     observation = payload.get("observation")
@@ -714,6 +770,8 @@ async def fraud_hunter_nl_action(payload: dict[str, Any]):
     if llm_override is not None and not isinstance(llm_override, dict):
         return JSONResponse({"detail": "llm must be a JSON object when provided"}, status_code=400)
 
+    used_fallback = False
+    fallback_reason: str | None = None
     try:
         action_payload, raw_content, resolved = _generate_action_with_llm(
             observation,
@@ -722,7 +780,17 @@ async def fraud_hunter_nl_action(payload: dict[str, Any]):
             user_message=user_message,
         )
     except Exception as exc:
-        return JSONResponse({"detail": f"agent generation failed: {exc}"}, status_code=503)
+        # Keep NL chat operational even when LLM config/provider is unavailable.
+        used_fallback = True
+        fallback_reason = str(exc)
+        action_payload = _heuristic_action(observation, objective)
+        raw_content = f"heuristic_fallback: {fallback_reason}"
+        resolved = {
+            "model": "heuristic",
+            "base_url": "",
+            "enabled": False,
+            "api_key": "",
+        }
 
     try:
         action = FraudHunterAction.model_validate(action_payload)
@@ -736,12 +804,15 @@ async def fraud_hunter_nl_action(payload: dict[str, Any]):
             status_code=422,
         )
 
-    return {
+    response: dict[str, Any] = {
         "action": action.model_dump(exclude_none=True, mode="json"),
         "model": resolved["model"],
         "base_url": resolved["base_url"],
-        "provider": "openai-compatible",
+        "provider": "heuristic-fallback" if used_fallback else "openai-compatible",
     }
+    if used_fallback and fallback_reason:
+        response["llm_error"] = fallback_reason
+    return response
 
 
 @app.post("/fraud_hunter/agent_action_online")

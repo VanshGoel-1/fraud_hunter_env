@@ -3,460 +3,316 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fraud Hunter Audit Console</title>
-  <meta name="description" content="Audit-grade investigation console for FraudHunterEnvironment.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <title>Fraud Hunter Medicare Dashboard</title>
+  <meta name="description" content="Guided Medicare dashboard with learning curve and real-time runtime parameters.">
   <style>
     :root {
-      --bg: #f6f8fb;
+      --bg: #f2f6fb;
       --panel: #ffffff;
-      --line: #dde3ed;
-      --line-strong: #c9d2df;
-      --text: #1d2735;
-      --muted: #657487;
-      --accent: #0f6ecf;
-      --accent-soft: #eaf2fd;
+      --line: #d7e0ec;
+      --text: #1f2a37;
+      --muted: #607388;
+      --accent: #1467c2;
       --ok: #0f8a53;
-      --ok-soft: #eaf8f1;
       --warn: #9a5f00;
-      --warn-soft: #fff4df;
       --err: #ad2a2a;
-      --err-soft: #ffefef;
-      --shadow: 0 8px 28px rgba(28, 45, 66, 0.06);
       --radius: 12px;
+      --shadow: 0 8px 24px rgba(29, 43, 58, 0.06);
     }
 
     * { box-sizing: border-box; }
 
-    html, body {
+    body {
       margin: 0;
-      padding: 0;
-      font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--text);
-      background:
-        radial-gradient(circle at 100% -20%, #edf5ff 0%, rgba(237, 245, 255, 0) 52%),
-        radial-gradient(circle at -20% 120%, #eefaf4 0%, rgba(238, 250, 244, 0) 45%),
-        var(--bg);
-      min-height: 100%;
+      background: var(--bg);
     }
 
     .app {
-      max-width: 1440px;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 16px;
       display: grid;
-      grid-template-rows: auto auto 1fr;
       gap: 12px;
-      min-height: 100vh;
     }
 
-    .header {
+    .panel {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
-      padding: 12px 16px;
+      padding: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .stack { display: grid; gap: 10px; }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .row {
       display: grid;
       grid-template-columns: 1fr auto;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .header-title {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .header-title h1 {
-      font-size: 19px;
-      line-height: 1.2;
-      margin: 0;
-      letter-spacing: -0.01em;
-    }
-
-    .header-title p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .stream-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--line-strong);
-      font-size: 12px;
-      color: var(--muted);
-      background: #fafcff;
-      white-space: nowrap;
-    }
-
-    .stream-status .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #a3afbf;
-    }
-
-    .stream-status.live {
-      color: var(--ok);
-      border-color: #b7dfca;
-      background: var(--ok-soft);
-    }
-
-    .stream-status.live .dot {
-      background: var(--ok);
-      animation: pulse 1.4s ease-in-out infinite;
-    }
-
-    .stream-status.down {
-      color: var(--err);
-      border-color: #efcccc;
-      background: var(--err-soft);
-    }
-
-    @keyframes pulse {
-      0% { opacity: 0.35; }
-      50% { opacity: 1; }
-      100% { opacity: 0.35; }
-    }
-
-    .kpis {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .kpi {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 11px 12px;
-    }
-
-    .kpi .label {
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 6px;
-    }
-
-    .kpi .value {
-      font-size: 25px;
-      font-weight: 700;
-      line-height: 1;
-    }
-
-    .kpi .hint {
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .workspace {
-      display: grid;
-      grid-template-columns: minmax(290px, 38%) minmax(340px, 62%);
-      gap: 12px;
-      min-height: 0;
-    }
-
-    .pane {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      display: grid;
-      grid-template-rows: auto 1fr;
-      min-height: 0;
-    }
-
-    .pane-header {
-      border-bottom: 1px solid var(--line);
-      padding: 12px 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .pane-header h2 {
-      margin: 0;
-      font-size: 14px;
-      letter-spacing: 0.01em;
-    }
-
-    .pane-body {
-      padding: 12px;
-      overflow: auto;
-      min-height: 0;
-    }
-
-    .section {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      margin-bottom: 10px;
-      overflow: hidden;
-    }
-
-    .section:last-child { margin-bottom: 0; }
-
-    .section-title {
-      margin: 0;
-      padding: 8px 10px;
-      font-size: 12px;
-      background: #fafcff;
-      border-bottom: 1px solid var(--line);
-      color: #2f3b4b;
-      letter-spacing: 0.02em;
-    }
-
-    .mono {
-      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-
-    .brief {
-      white-space: pre-wrap;
-      font-size: 13px;
-      line-height: 1.5;
-      margin: 0;
-      padding: 10px;
-    }
-
-    .placeholder {
-      margin: 0;
-      padding: 10px;
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .schema-list {
-      margin: 0;
-      list-style: none;
-      padding: 8px;
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 6px;
-    }
-
-    .schema-list li {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 7px 9px;
-      font-size: 12px;
-      background: #fcfdff;
-    }
-
-    .controls {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
       align-items: center;
-      margin-bottom: 10px;
     }
 
-    .auth-bar {
+    .tri {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .pair {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin-bottom: 10px;
     }
 
-    .auth-note {
-      margin: 0 0 10px;
-      padding: 8px 10px;
-      font-size: 12px;
-      border-radius: 8px;
+    input, textarea, button, select {
+      font: inherit;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    textarea,
+    select {
+      width: 100%;
       border: 1px solid var(--line);
-      background: #fafcff;
-      color: var(--muted);
-    }
-
-    .auth-note.warn {
-      border-color: #f2d8a8;
-      background: var(--warn-soft);
-      color: var(--warn);
-    }
-
-    .controls input {
-      height: 34px;
-      border: 1px solid var(--line-strong);
       border-radius: 8px;
-      padding: 0 10px;
-      font-size: 13px;
-      color: var(--text);
-      background: #fff;
-    }
-
-    .button {
-      border: 1px solid var(--line-strong);
+      padding: 10px;
       background: #fff;
       color: var(--text);
-      border-radius: 8px;
-      height: 34px;
-      padding: 0 12px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .button.primary {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
-    }
-
-    .button:hover { filter: brightness(0.98); }
-    .button:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .composer {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 9px;
-      margin-bottom: 10px;
-      background: #fcfdff;
-    }
-
-    .composer-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 7px;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .composer-head span {
-      font-size: 12px;
-      color: var(--muted);
     }
 
     textarea {
-      width: 100%;
+      min-height: 88px;
       resize: vertical;
-      min-height: 126px;
-      border: 1px solid var(--line-strong);
+    }
+
+    button {
+      border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 10px;
-      font-size: 12px;
-      line-height: 1.45;
+      padding: 8px 12px;
       background: #fff;
       color: var(--text);
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
     }
 
-    .trace {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      min-height: 300px;
-      max-height: 58vh;
-      overflow: auto;
-      background: #fcfdff;
-      padding: 8px;
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
     }
 
-    .trace-empty {
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .note {
       margin: 0;
-      padding: 12px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-
-    .trace-item {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: #fff;
-      margin-bottom: 8px;
-      overflow: hidden;
-    }
-
-    .trace-item:last-child { margin-bottom: 0; }
-
-    .trace-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--line);
-      background: #fafcff;
       font-size: 12px;
       color: var(--muted);
     }
 
-    .trace-title {
-      display: inline-flex;
-      gap: 8px;
-      align-items: center;
-      font-weight: 600;
-      color: #304155;
-    }
+    .note.ok { color: var(--ok); }
+    .note.err { color: var(--err); }
 
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      padding: 2px 8px;
-      font-size: 11px;
-      border: 1px solid var(--line);
-      color: var(--muted);
-      background: #fff;
-    }
-
-    .pill.ok { background: var(--ok-soft); border-color: #b7dfca; color: var(--ok); }
-    .pill.warn { background: var(--warn-soft); border-color: #f2d8a8; color: var(--warn); }
-    .pill.err { background: var(--err-soft); border-color: #efcccc; color: var(--err); }
-
-    .trace-body {
-      padding: 9px 10px 10px;
+    .guide-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
       display: grid;
       gap: 8px;
     }
 
-    .kv {
+    .guide-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 8px;
+      align-items: start;
+      background: #fff;
+    }
+
+    .guide-step {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+    }
+
+    .guide-item.done .guide-step {
+      color: var(--ok);
+      border-color: #b8dfca;
+      background: #eef9f3;
+    }
+
+    .guide-item.active .guide-step {
+      color: var(--accent);
+      border-color: #b9d4f4;
+      background: #eef5ff;
+    }
+
+    .mini {
+      margin-top: 3px;
+      color: var(--muted);
       font-size: 12px;
       line-height: 1.45;
     }
 
-    .kv strong {
-      display: inline-block;
-      min-width: 92px;
-      color: #32455c;
+    .checklist {
+      display: grid;
+      gap: 6px;
+      margin-top: 4px;
     }
 
-    .codeblock {
-      margin: 0;
-      padding: 9px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      background: #fafcff;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    details.think {
+    .check-item {
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: #f5f9ff;
-      padding: 6px 8px;
+      padding: 8px 10px;
+      display: grid;
+      grid-template-columns: 26px 1fr;
+      gap: 8px;
+      align-items: center;
+      background: #fff;
     }
 
-    details.think summary {
-      cursor: pointer;
+    .badge {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       font-size: 12px;
-      color: #295a8d;
+      font-weight: 700;
+      color: var(--muted);
+      background: #fff;
+    }
+
+    .check-item.pending .badge {
+      color: var(--warn);
+      border-color: #efdfbe;
+      background: #fff7ea;
+    }
+
+    .check-item.ok .badge {
+      color: var(--ok);
+      border-color: #b8dfca;
+      background: #eef9f3;
+    }
+
+    .check-item.fail .badge {
+      color: var(--err);
+      border-color: #efcccc;
+      background: #fff1f1;
+    }
+
+    .check-label {
+      font-size: 13px;
       font-weight: 600;
     }
 
-    .typing {
+    .check-meta {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .curve {
+      width: 100%;
+      height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      overflow: hidden;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff;
+    }
+
+    .stat .k {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+
+    .stat .v {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .feed {
+      display: grid;
+      gap: 8px;
+      max-height: 54vh;
+      overflow: auto;
+      padding: 4px;
+    }
+
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .item strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .small-check {
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -464,1039 +320,602 @@
       color: var(--muted);
     }
 
-    .typing .pulse-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--accent);
-      animation: pulse 1.2s ease-in-out infinite;
+    @media (max-width: 1024px) {
+      .grid { grid-template-columns: 1fr; }
     }
 
-    .meta-grid {
-      margin: 0;
-      padding: 10px;
-      list-style: none;
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 7px;
-      font-size: 12px;
-    }
-
-    .meta-grid li {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px;
-      background: #fcfdff;
-    }
-
-    .meta-grid .key {
-      display: block;
-      color: var(--muted);
-      margin-bottom: 4px;
-    }
-
-    @media (max-width: 1080px) {
-      .kpis {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .workspace {
-        grid-template-columns: 1fr;
-      }
-
-      .trace {
-        max-height: 48vh;
-      }
-    }
-
-    @media (max-width: 620px) {
-      .app {
-        padding: 10px;
-      }
-
-      .controls {
-        grid-template-columns: 1fr;
-      }
-
-      .auth-bar {
-        grid-template-columns: 1fr;
-      }
-
-      .controls .button {
-        width: 100%;
-      }
+    @media (max-width: 760px) {
+      .row, .pair, .tri { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <div class="app">
-    <header class="header">
-      <div class="header-title">
-        <h1>Fraud Hunter Investigation Console</h1>
-        <p>Real-time OpenEnv audit feed for judges. No simulated values.</p>
+    <section class="panel stack">
+      <div>
+        <h1>Fraud Hunter Medicare Dashboard</h1>
+        <p class="sub">Guided workflow with real-time parameter control, learning curve, and backend checklist.</p>
       </div>
-      <div id="streamStatus" class="stream-status"><span class="dot"></span><span id="streamStatusText">Metrics stream idle</span></div>
-    </header>
-
-    <section class="kpis">
-      <article class="kpi">
-        <div class="label">Episode Reward</div>
-        <div id="kpiReward" class="value">-</div>
-        <div class="hint">From latest real response</div>
-      </article>
-      <article class="kpi">
-        <div class="label">Step Count</div>
-        <div id="kpiStep" class="value">-</div>
-        <div class="hint">Current active episode</div>
-      </article>
-      <article class="kpi">
-        <div class="label">Difficulty Tier</div>
-        <div id="kpiTier" class="value">-</div>
-        <div class="hint">Reset/step + metrics feed</div>
-      </article>
-      <article class="kpi">
-        <div class="label">Replay Hash</div>
-        <div id="kpiReplay" class="value mono" style="font-size:13px; line-height:1.25;">-</div>
-        <div class="hint">From observation info</div>
-      </article>
+      <div class="pair">
+        <input id="apiKeyInput" type="password" placeholder="Step 1: X-API-Key (if server auth is enabled)">
+        <div class="row" style="margin:0;">
+          <button id="newEpisodeBtn" class="primary">Step 2: Start New Episode</button>
+          <button id="clearBtn">Clear Feed</button>
+        </div>
+      </div>
+      <p id="statusLine" class="note">Ready.</p>
     </section>
 
-    <section class="workspace">
-      <aside class="pane">
-        <div class="pane-header">
-          <h2>Source and Case Context</h2>
-          <button id="loadSchemaBtn" class="button" disabled>Load Schema via sql_query</button>
-        </div>
-        <div class="pane-body">
-          <section class="section">
-            <h3 class="section-title">Case Brief</h3>
-            <pre id="caseBrief" class="brief placeholder">Press Start Investigation to request /reset.</pre>
-          </section>
+    <div class="grid">
+      <aside class="stack">
+        <section class="panel stack">
+          <h2>How To Navigate</h2>
+          <ul id="guideList" class="guide-list"></ul>
+        </section>
 
-          <section class="section">
-            <h3 class="section-title">SQLite Structure (Observed)</h3>
-            <p id="schemaPlaceholder" class="placeholder">Not loaded. Click “Load Schema via sql_query” after reset.</p>
-            <ul id="schemaList" class="schema-list" style="display:none"></ul>
-          </section>
+        <section class="panel stack">
+          <h2>Runtime Parameters</h2>
+          <p class="note">Update these anytime. New chat sends use the latest values immediately.</p>
+          <textarea id="objectiveInput" placeholder="Investigation objective">Hyper-focus on Medicare fraud: prioritize beneficiary and claim contradictions, then summarize evidence.</textarea>
+          <input id="llmBaseUrlInput" type="text" placeholder="LLM API Base URL (OpenAI-compatible)">
+          <div class="pair">
+            <input id="llmModelInput" type="text" placeholder="LLM model name">
+            <input id="llmApiKeyInput" type="password" placeholder="LLM API key (optional)">
+          </div>
+          <label class="small-check">
+            <input id="forceHeuristicInput" type="checkbox">
+            Force heuristic fallback (ignore LLM settings)
+          </label>
+          <p id="paramsStatus" class="note">LLM parameters not configured yet. Heuristic mode will be used unless configured.</p>
+        </section>
 
-          <section class="section">
-            <h3 class="section-title">Latest Observation Metadata</h3>
-            <ul id="metaGrid" class="meta-grid" style="display:none"></ul>
-            <p id="metaPlaceholder" class="placeholder">No observation has been received yet.</p>
-          </section>
-
-          <section class="section">
-            <h3 class="section-title">Online RL Policy Status</h3>
-            <div style="padding: 8px 10px; display:flex; gap:8px;">
-              <button id="refreshOnlineRlBtn" class="button">Refresh RL State</button>
-              <button id="resetOnlineRlBtn" class="button">Reset RL Weights</button>
-            </div>
-            <ul id="onlineRlGrid" class="meta-grid" style="display:none"></ul>
-            <p id="onlineRlPlaceholder" class="placeholder">Online RL state will appear here after config load.</p>
-          </section>
-        </div>
+        <section class="panel stack">
+          <h2>Backend Checklist</h2>
+          <p class="note">Shows exactly where a request fails.</p>
+          <div id="checklist" class="checklist"></div>
+          <div class="row" style="margin-top:2px;">
+            <span class="note">Pending means in progress</span>
+            <button id="resetChecksBtn">Reset Checklist</button>
+          </div>
+        </section>
       </aside>
 
-      <section class="pane">
-        <div class="pane-header">
-          <h2>Agent Trace</h2>
-          <button id="clearTraceBtn" class="button">Clear Trace</button>
-        </div>
-        <div class="pane-body">
-          <p id="authNote" class="auth-note">Loading backend runtime configuration...</p>
-
-          <div class="auth-bar">
-            <input id="apiKeyInput" type="password" placeholder="Optional X-API-Key (required if server auth is enabled)">
-            <input id="seedScopeInput" type="text" placeholder="Optional X-Seed-Scope (e.g. judge-demo)">
+      <main class="stack">
+        <section class="panel stack">
+          <h2>Learning Curve</h2>
+          <div class="stats">
+            <div class="stat"><div class="k">Last Reward</div><div id="statLast" class="v">-</div></div>
+            <div class="stat"><div class="k">Average Reward</div><div id="statAvg" class="v">-</div></div>
+            <div class="stat"><div class="k">Best Reward</div><div id="statBest" class="v">-</div></div>
           </div>
+          <svg id="curveSvg" class="curve" viewBox="0 0 800 220" preserveAspectRatio="none" aria-label="Learning curve"></svg>
+          <p id="curveHint" class="note">Rewards appear after each successful step execution.</p>
+        </section>
 
-          <div class="auth-bar" style="grid-template-columns: 1fr;">
-            <input id="agentObjectiveInput" type="text" placeholder="Agent objective (used by LLM auto-step)">
+        <section class="panel stack">
+          <h2>Step 3: Optional Dataset Upload</h2>
+          <div class="row">
+            <input id="datasetNameInput" type="text" placeholder="Dataset name (optional)">
+            <button id="uploadBtn">Upload Dataset</button>
           </div>
+          <div class="row" style="grid-template-columns: 1fr auto auto;">
+            <input id="datasetFileInput" type="file" accept=".csv,.zip">
+            <label class="small-check"><input id="extractZipInput" type="checkbox" checked> Extract ZIP</label>
+            <label class="small-check"><input id="skipUploadInput" type="checkbox" checked> Skip upload for now</label>
+          </div>
+          <p id="uploadStatus" class="note">No upload yet.</p>
+        </section>
 
-          <div class="auth-bar" style="grid-template-columns: 1fr;">
-            <input id="userMessageInput" type="text" placeholder="Natural-language instruction (e.g. Find fraud links and contradictions)">
+        <section class="panel stack">
+          <h2>Step 4: Ask Investigation Question</h2>
+          <textarea id="chatInput" placeholder="Example: Find Medicare claim contradictions and list suspicious billing patterns."></textarea>
+          <div class="row">
+            <p class="note">Press Send or use Ctrl/Cmd + Enter.</p>
+            <button id="sendBtn" class="primary">Send</button>
           </div>
+        </section>
 
-          <div class="auth-bar">
-            <input id="llmBaseUrlInput" type="text" placeholder="LLM Base URL (OpenAI-compatible, e.g. http://localhost:11434/v1)">
-            <input id="llmModelInput" type="text" placeholder="LLM Model (e.g. llama3.1:8b or gpt-4o-mini)">
+        <section class="panel">
+          <div class="row" style="margin-top:0;">
+            <h2>Chat Feed</h2>
+            <span class="note" id="sessionInfo"></span>
           </div>
-
-          <div class="auth-bar" style="grid-template-columns: 1fr;">
-            <input id="llmApiKeyInput" type="password" placeholder="LLM API Key (optional for local endpoints)">
+          <div id="feed" class="feed">
+            <div class="item"><strong>System</strong>Follow steps from top to bottom: key, episode, optional upload, then chat.</div>
           </div>
-
-          <div class="controls">
-            <button id="resetBtn" class="button primary">Start Investigation</button>
-            <button id="submitStepBtn" class="button" disabled>Run Step</button>
-            <button id="autoStepBtn" class="button" disabled>Auto Step (LLM)</button>
-            <button id="pingHealthBtn" class="button">Check Backend Health</button>
-          </div>
-
-          <div class="composer">
-            <div class="composer-head">
-              <span>Dataset Upload (CSV/ZIP) via <span class="mono">POST /fraud_hunter/upload_dataset</span></span>
-              <button id="uploadDatasetBtn" class="button">Upload Dataset</button>
-            </div>
-            <div class="auth-bar" style="grid-template-columns: 1fr 1fr; margin-bottom:8px;">
-              <input id="datasetNameInput" type="text" placeholder="Dataset name (optional, e.g. beneficiary_2026)">
-              <input id="datasetFileInput" type="file" accept=".csv,.zip">
-            </div>
-            <label style="display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);">
-              <input id="extractZipInput" type="checkbox" checked>
-              Extract ZIP after upload
-            </label>
-            <p id="uploadStatus" class="placeholder" style="padding:8px 0 0;">No dataset uploaded yet.</p>
-            <ul id="uploadFilesList" class="schema-list" style="display:none"></ul>
-          </div>
-
-          <div class="composer">
-            <div class="composer-head">
-              <span>Action JSON payload for <span class="mono">POST /step</span> (strict OpenEnv action)</span>
-              <button id="templateBtn" class="button">Insert sql_query Template</button>
-            </div>
-            <textarea id="actionInput" class="mono" spellcheck="false" placeholder='{
-  "kind": "sql_query",
-  "sql_statement": "SELECT name FROM sqlite_master WHERE type=\"table\" ORDER BY name",
-  "think_trace": "<think>Inspect evidence schema before further actions.</think>"
-}'></textarea>
-          </div>
-
-          <div id="traceFeed" class="trace">
-            <p class="trace-empty">Trace is empty. Start an episode to stream real action and observation records.</p>
-          </div>
-        </div>
-      </section>
-    </section>
+        </section>
+      </main>
+    </div>
   </div>
 
   <script>
+    const CHECKS = {
+      auth: "auth_header",
+      reset: "episode_reset",
+      upload: "upload_dataset",
+      nl: "nl_action",
+      step: "step_execute",
+    };
+
+    const CHECK_LABELS = {
+      [CHECKS.auth]: "Auth Header",
+      [CHECKS.reset]: "Start Episode",
+      [CHECKS.upload]: "Upload Dataset",
+      [CHECKS.nl]: "Generate NL Action",
+      [CHECKS.step]: "Execute Step",
+    };
+
+    const GUIDE_STEPS = [
+      { id: "guide_auth", title: "Enter credentials and parameters", hint: "Fill API key if required. Optionally set LLM API base URL, model, and key." },
+      { id: "guide_episode", title: "Click Start New Episode", hint: "This initializes the case context for your session." },
+      { id: "guide_upload", title: "Upload dataset (optional)", hint: "Upload CSV or ZIP if you want to enrich analysis. You can skip this." },
+      { id: "guide_chat", title: "Ask Medicare investigation question", hint: "Use natural language. Reward curve updates after each step." },
+    ];
+
     const state = {
-      config: {
-        authRequired: false,
-        agent: {
-          enabled: false,
-          model: "",
-        },
-        onlineRl: {
-          enabled: false,
-        },
-        upload: {
-          enabled: false,
-          maxBytes: 0,
-        },
-        endpoints: {
-          health: "/health",
-          reset: "/reset",
-          step: "/step",
-          agent_action: "/fraud_hunter/agent_action",
-          agent_action_online: "/fraud_hunter/agent_action_online",
-          upload_dataset: "/fraud_hunter/upload_dataset",
-          online_rl_update: "/fraud_hunter/online_rl/update",
-          online_rl_state: "/fraud_hunter/online_rl/state",
-          online_rl_reset: "/fraud_hunter/online_rl/reset",
-          metrics: "/metrics",
-        },
+      endpoints: {
+        reset: "/fraud_hunter/session_reset",
+        step: "/fraud_hunter/session_step",
+        nlAction: "/fraud_hunter/nl_action",
+        upload: "/fraud_hunter/upload_dataset",
       },
-      episodeActive: false,
-      requestBusy: false,
-      traceCount: 0,
-      metricsSource: null,
-      metricsConnected: false,
-      latestInfo: null,
-      latestObservation: null,
-      lastDecisionToken: "",
-      lastDecisionArm: "",
-      onlineRlPollTimer: null,
+      sessionId: "",
+      observation: null,
+      busy: false,
+      checks: {},
+      rewards: [],
+      guide: {
+        auth: false,
+        episode: false,
+        upload: false,
+        chat: false,
+      },
     };
 
     const nodes = {
-      streamStatus: document.getElementById("streamStatus"),
-      streamStatusText: document.getElementById("streamStatusText"),
-      kpiReward: document.getElementById("kpiReward"),
-      kpiStep: document.getElementById("kpiStep"),
-      kpiTier: document.getElementById("kpiTier"),
-      kpiReplay: document.getElementById("kpiReplay"),
-      authNote: document.getElementById("authNote"),
       apiKeyInput: document.getElementById("apiKeyInput"),
-      agentObjectiveInput: document.getElementById("agentObjectiveInput"),
-      userMessageInput: document.getElementById("userMessageInput"),
+      newEpisodeBtn: document.getElementById("newEpisodeBtn"),
+      clearBtn: document.getElementById("clearBtn"),
+      statusLine: document.getElementById("statusLine"),
+      sessionInfo: document.getElementById("sessionInfo"),
+
+      objectiveInput: document.getElementById("objectiveInput"),
       llmBaseUrlInput: document.getElementById("llmBaseUrlInput"),
       llmModelInput: document.getElementById("llmModelInput"),
       llmApiKeyInput: document.getElementById("llmApiKeyInput"),
-      caseBrief: document.getElementById("caseBrief"),
-      schemaList: document.getElementById("schemaList"),
-      schemaPlaceholder: document.getElementById("schemaPlaceholder"),
-      metaGrid: document.getElementById("metaGrid"),
-      metaPlaceholder: document.getElementById("metaPlaceholder"),
-      onlineRlGrid: document.getElementById("onlineRlGrid"),
-      onlineRlPlaceholder: document.getElementById("onlineRlPlaceholder"),
+      forceHeuristicInput: document.getElementById("forceHeuristicInput"),
+      paramsStatus: document.getElementById("paramsStatus"),
+
+      guideList: document.getElementById("guideList"),
+
+      checklist: document.getElementById("checklist"),
+      resetChecksBtn: document.getElementById("resetChecksBtn"),
+
+      statLast: document.getElementById("statLast"),
+      statAvg: document.getElementById("statAvg"),
+      statBest: document.getElementById("statBest"),
+      curveSvg: document.getElementById("curveSvg"),
+      curveHint: document.getElementById("curveHint"),
+
       datasetNameInput: document.getElementById("datasetNameInput"),
       datasetFileInput: document.getElementById("datasetFileInput"),
       extractZipInput: document.getElementById("extractZipInput"),
-      uploadDatasetBtn: document.getElementById("uploadDatasetBtn"),
+      skipUploadInput: document.getElementById("skipUploadInput"),
+      uploadBtn: document.getElementById("uploadBtn"),
       uploadStatus: document.getElementById("uploadStatus"),
-      uploadFilesList: document.getElementById("uploadFilesList"),
-      resetBtn: document.getElementById("resetBtn"),
-      submitStepBtn: document.getElementById("submitStepBtn"),
-      autoStepBtn: document.getElementById("autoStepBtn"),
-      refreshOnlineRlBtn: document.getElementById("refreshOnlineRlBtn"),
-      resetOnlineRlBtn: document.getElementById("resetOnlineRlBtn"),
-      pingHealthBtn: document.getElementById("pingHealthBtn"),
-      loadSchemaBtn: document.getElementById("loadSchemaBtn"),
-      clearTraceBtn: document.getElementById("clearTraceBtn"),
-      actionInput: document.getElementById("actionInput"),
-      templateBtn: document.getElementById("templateBtn"),
-      traceFeed: document.getElementById("traceFeed"),
-      seedScopeInput: document.getElementById("seedScopeInput"),
+
+      chatInput: document.getElementById("chatInput"),
+      sendBtn: document.getElementById("sendBtn"),
+      feed: document.getElementById("feed"),
     };
 
-    function buildHeaders() {
-      const headers = { "Content-Type": "application/json" };
-      const apiKey = (nodes.apiKeyInput.value || "").trim();
-      if (apiKey) headers["x-api-key"] = apiKey;
-      const scope = (nodes.seedScopeInput.value || "").trim();
-      if (scope) headers["x-seed-scope"] = scope;
-      return headers;
-    }
-
-    function buildAuthHeaders() {
-      const headers = {};
-      const apiKey = (nodes.apiKeyInput.value || "").trim();
-      if (apiKey) headers["x-api-key"] = apiKey;
-      const scope = (nodes.seedScopeInput.value || "").trim();
-      if (scope) headers["x-seed-scope"] = scope;
-      return headers;
-    }
-
-    function setAuthNote(message, mode = "info") {
-      nodes.authNote.textContent = message;
-      nodes.authNote.className = mode === "warn" ? "auth-note warn" : "auth-note";
-    }
-
-    async function loadDashboardConfig() {
-      try {
-        const response = await fetch("/ui/config", { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`config endpoint returned HTTP ${response.status}`);
-        }
-        const cfg = await response.json();
-        const endpoints = cfg.endpoints || {};
-        state.config.authRequired = Boolean(cfg.auth_required);
-        state.config.endpoints = {
-          health: endpoints.health || "/health",
-          reset: endpoints.reset || "/reset",
-          step: endpoints.step || "/step",
-          agent_action: endpoints.agent_action || "/fraud_hunter/agent_action",
-          agent_action_online: endpoints.agent_action_online || "/fraud_hunter/agent_action_online",
-          upload_dataset: endpoints.upload_dataset || "/fraud_hunter/upload_dataset",
-          online_rl_update: endpoints.online_rl_update || "/fraud_hunter/online_rl/update",
-          online_rl_state: endpoints.online_rl_state || "/fraud_hunter/online_rl/state",
-          online_rl_reset: endpoints.online_rl_reset || "/fraud_hunter/online_rl/reset",
-          metrics: endpoints.metrics || "/metrics",
-        };
-        state.config.agent = {
-          enabled: Boolean((cfg.agent || {}).enabled),
-          model: String((cfg.agent || {}).model || ""),
-        };
-        state.config.onlineRl = {
-          enabled: Boolean((cfg.online_rl || {}).enabled),
-        };
-        state.config.upload = {
-          enabled: Boolean((cfg.upload || {}).enabled),
-          maxBytes: Number((cfg.upload || {}).max_bytes || 0),
-        };
-        if ((cfg.agent || {}).base_url) {
-          nodes.llmBaseUrlInput.value = String((cfg.agent || {}).base_url || "");
-        }
-        if ((cfg.agent || {}).model) {
-          nodes.llmModelInput.value = String((cfg.agent || {}).model || "");
-        }
-
-        if (state.config.authRequired) {
-          setAuthNote("Backend requires X-API-Key for reset/step/state. Enter the key above before starting.", "warn");
-        } else if (state.config.onlineRl.enabled) {
-          setAuthNote("Online RL is enabled. Auto Step will update policy weights in real time after every reward.", "info");
-        } else if (state.config.agent.enabled) {
-          const model = state.config.agent.model || "configured model";
-          setAuthNote(`Realtime agent serving enabled (${model}). Use Auto Step (LLM).`, "info");
-        } else {
-          setAuthNote("Backend config loaded. Auth is disabled; requests will run without an API key. Fill LLM Base URL + Model to activate Auto Step.", "warn");
-        }
-      } catch (err) {
-        setAuthNote("Could not load /ui/config. Using default route wiring (/reset, /step, /metrics).", "warn");
-        appendTraceItem({
-          title: "Dashboard config",
-          status: "warning",
-          error: (err && err.message) ? err.message : "Unknown config loading error",
-        });
-      }
-    }
-
-    function renderUploadResult(payload) {
-      const extracted = Array.isArray(payload.extracted_files) ? payload.extracted_files : [];
-      const maxMb = state.config.upload.maxBytes > 0 ? (state.config.upload.maxBytes / (1024 * 1024)).toFixed(1) : "-";
-      nodes.uploadStatus.textContent = `Uploaded ${payload.dataset} (${payload.bytes} bytes). Extracted files: ${payload.extracted_count}. Max upload: ${maxMb} MB.`;
-      if (extracted.length === 0) {
-        nodes.uploadFilesList.style.display = "none";
-        nodes.uploadFilesList.innerHTML = "";
-        return;
-      }
-      nodes.uploadFilesList.innerHTML = extracted.slice(0, 40).map((name) => (
-        `<li class="mono">${escapeHtml(String(name))}</li>`
-      )).join("");
-      nodes.uploadFilesList.style.display = "grid";
-    }
-
-    async function uploadDataset() {
-      if (!state.config.upload.enabled) {
-        appendTraceItem({
-          title: "Dataset upload",
-          status: "error",
-          error: "Dataset upload is disabled on backend.",
-        });
-        return;
-      }
-
-      const input = nodes.datasetFileInput;
-      if (!input.files || input.files.length === 0) {
-        appendTraceItem({
-          title: "Dataset upload",
-          status: "error",
-          error: "Choose a .csv or .zip file first.",
-        });
-        return;
-      }
-
-      const file = input.files[0];
-      const form = new FormData();
-      form.append("file", file);
-      const datasetName = (nodes.datasetNameInput.value || "").trim();
-      if (datasetName) form.append("dataset_name", datasetName);
-      form.append("extract_zip", nodes.extractZipInput.checked ? "true" : "false");
-
-      try {
-        const response = await fetch(state.config.endpoints.upload_dataset, {
-          method: "POST",
-          headers: buildAuthHeaders(),
-          body: form,
-        });
-        const text = await response.text();
-        let body = {};
-        try {
-          body = text ? JSON.parse(text) : {};
-        } catch {
-          body = { raw: text };
-        }
-
-        if (!response.ok) {
-          throw new Error((body && body.detail) ? body.detail : `HTTP ${response.status}`);
-        }
-
-        renderUploadResult(body || {});
-        appendTraceItem({
-          title: "Dataset upload",
-          status: "ok",
-          toolOutput: `Uploaded ${String((body || {}).stored_file || file.name)} successfully.`,
-          feedback: `dataset=${String((body || {}).dataset || "-")} extracted=${String((body || {}).extracted_count || 0)}`,
-        });
-      } catch (err) {
-        appendTraceItem({
-          title: "Dataset upload",
-          status: "error",
-          error: (err && err.message) ? err.message : "Dataset upload failed",
-        });
-      }
-    }
-
-    function renderOnlineRlState(snapshot, enabled = true) {
-      if (!snapshot || typeof snapshot !== "object") {
-        nodes.onlineRlGrid.style.display = "none";
-        nodes.onlineRlGrid.innerHTML = "";
-        nodes.onlineRlPlaceholder.textContent = "Online RL state unavailable.";
-        nodes.onlineRlPlaceholder.style.display = "block";
-        return;
-      }
-
-      const counts = snapshot.selection_count || {};
-      const countText = Object.keys(counts).length
-        ? Object.entries(counts).map(([k, v]) => `${k}:${v}`).join(" | ")
-        : "-";
-      const rows = [
-        ["Enabled", String(Boolean(enabled))],
-        ["Updates", String(snapshot.updates ?? "0")],
-        ["Baseline", Number(snapshot.baseline ?? 0).toFixed(3)],
-        ["Learning Rate", String(snapshot.learning_rate ?? "-")],
-        ["Temperature", String(snapshot.temperature ?? "-")],
-        ["Pending Decisions", String(snapshot.pending_decisions ?? "0")],
-        ["Arms", Array.isArray(snapshot.arms) ? snapshot.arms.join(", ") : "-"],
-        ["Selection Count", countText],
-      ];
-
-      nodes.onlineRlGrid.innerHTML = rows.map(([k, v]) => (
-        `<li><span class="key">${escapeHtml(String(k))}</span><span class="mono">${escapeHtml(String(v))}</span></li>`
-      )).join("");
-      nodes.onlineRlGrid.style.display = "grid";
-      nodes.onlineRlPlaceholder.style.display = "none";
-    }
-
-    async function fetchOnlineRlState() {
-      try {
-        const response = await fetch(state.config.endpoints.online_rl_state, {
-          headers: buildHeaders(),
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const payload = await response.json();
-        renderOnlineRlState(payload.state || {}, Boolean(payload.enabled));
-      } catch (err) {
-        renderOnlineRlState(null, false);
-        appendTraceItem({
-          title: "Online RL state",
-          status: "warning",
-          error: (err && err.message) ? err.message : "Failed to fetch online RL state",
-        });
-      }
-    }
-
-    function startOnlineRlPolling() {
-      if (state.onlineRlPollTimer) {
-        clearInterval(state.onlineRlPollTimer);
-      }
-      state.onlineRlPollTimer = setInterval(() => {
-        fetchOnlineRlState();
-      }, 5000);
-    }
-
-    async function postJson(path, payload) {
-      const response = await fetch(path, {
-        method: "POST",
-        headers: buildHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      const text = await response.text();
-      let body = null;
-      if (text) {
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = { raw: text };
-        }
-      }
-
-      if (!response.ok) {
-        const detail = (body && body.detail) ? body.detail : `HTTP ${response.status}`;
-        const error = new Error(detail);
-        error.status = response.status;
-        error.payload = body;
-        throw error;
-      }
-
-      return body;
-    }
-
-    function setBusy(flag) {
-      state.requestBusy = flag;
-      nodes.resetBtn.disabled = flag;
-      nodes.submitStepBtn.disabled = flag || !state.episodeActive;
-      nodes.autoStepBtn.disabled = flag || !state.episodeActive;
-      nodes.loadSchemaBtn.disabled = flag || !state.episodeActive;
-    }
-
-    function shortHash(value) {
-      if (!value || typeof value !== "string") return "-";
-      if (value.length <= 14) return value;
-      return `${value.slice(0, 7)}…${value.slice(-7)}`;
-    }
-
-    function setKpisFromObservation(payload) {
-      if (!payload || !payload.observation) return;
-      const obs = payload.observation;
-      state.latestObservation = obs;
-      const info = obs.info || {};
-      state.latestInfo = info;
-
-      const rewardValue = (payload.reward ?? obs.reward ?? info.episode_reward);
-      if (rewardValue !== undefined && rewardValue !== null) {
-        const numeric = Number(rewardValue);
-        nodes.kpiReward.textContent = Number.isFinite(numeric) ? numeric.toFixed(2) : "-";
-      }
-
-      nodes.kpiStep.textContent = Number.isFinite(obs.step_count) ? String(obs.step_count) : "-";
-      nodes.kpiTier.textContent = Number.isFinite(obs.difficulty_tier) ? String(obs.difficulty_tier) : "-";
-      nodes.kpiReplay.textContent = shortHash(info.replay_hash);
-
-      renderMetadata(obs, info);
-    }
-
-    function setKpisFromMetrics(metrics) {
-      if (!metrics || typeof metrics !== "object") return;
-      if (Number.isFinite(metrics.episode_reward)) {
-        nodes.kpiReward.textContent = Number(metrics.episode_reward).toFixed(2);
-      }
-      if (Number.isFinite(metrics.difficulty_tier)) {
-        nodes.kpiTier.textContent = String(metrics.difficulty_tier);
-      }
-    }
-
-    function renderMetadata(obs, info) {
-      const rows = [
-        ["Case ID", info.case_id || "-"],
-        ["Budget Remaining", Number.isFinite(obs.budget_remaining) ? obs.budget_remaining : "-"],
-        ["Done", String(Boolean(obs.done))],
-        ["Format Errors", Number.isFinite(info.format_error_count) ? info.format_error_count : "-"],
-        ["Agentic Recall", Number.isFinite(info.agentic_recall) ? info.agentic_recall : "-"],
-        ["CoT Validity", Number.isFinite(info.cot_validity_score) ? info.cot_validity_score : "-"],
-        ["Replay Hash", info.replay_hash || "-"],
-        ["Prev Replay Hash", info.replay_prev_hash || "-"],
-      ];
-
-      nodes.metaGrid.innerHTML = rows.map(([k, v]) => (
-        `<li><span class="key">${escapeHtml(String(k))}</span><span class="mono">${escapeHtml(String(v))}</span></li>`
-      )).join("");
-      nodes.metaGrid.style.display = "grid";
-      nodes.metaPlaceholder.style.display = "none";
-    }
-
-    function parseThinkTrace(action) {
-      if (!action || typeof action !== "object") return "";
-      const raw = action.think_trace;
-      if (!raw || typeof raw !== "string") return "";
-      const match = raw.match(/<think>([\s\S]*?)<\/think>/i);
-      return (match ? match[1] : raw).trim();
-    }
-
-    function escapeHtml(value) {
-      return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-    }
-
-    function removeTraceEmpty() {
-      const empty = nodes.traceFeed.querySelector(".trace-empty");
-      if (empty) empty.remove();
-    }
-
-    function nowClock() {
+    function now() {
       return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     }
 
-    function appendTraceItem({
-      title,
-      status,
-      action,
-      think,
-      toolOutput,
-      feedback,
-      reward,
-      done,
-      error,
-      pending,
-    }) {
-      removeTraceEmpty();
-      state.traceCount += 1;
-
-      const wrapper = document.createElement("article");
-      wrapper.className = "trace-item";
-      wrapper.dataset.traceIndex = String(state.traceCount);
-
-      const pillClass = status === "error" ? "err" : status === "warning" ? "warn" : "ok";
-      const pillText = status === "error" ? "Execution Error" : status === "warning" ? "Pending" : "OK";
-
-      wrapper.innerHTML = `
-        <div class="trace-top">
-          <div class="trace-title">#${state.traceCount} ${escapeHtml(title)}</div>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <span class="mono">${escapeHtml(nowClock())}</span>
-            <span class="pill ${pillClass}">${pillText}</span>
-          </div>
-        </div>
-        <div class="trace-body">
-          ${pending ? '<div class="typing"><span class="pulse-dot"></span>Waiting for /step response…</div>' : ""}
-          ${action ? `<div><div class="kv"><strong>Action</strong></div><pre class="codeblock mono">${escapeHtml(JSON.stringify(action, null, 2))}</pre></div>` : ""}
-          ${think ? `<details class="think"><summary>Reasoning &lt;think&gt;</summary><pre class="codeblock mono" style="margin-top:7px; background:#fff;">${escapeHtml(think)}</pre></details>` : ""}
-          ${toolOutput ? `<div><div class="kv"><strong>Observation</strong></div><pre class="codeblock mono">${escapeHtml(toolOutput)}</pre></div>` : ""}
-          ${feedback ? `<div><div class="kv"><strong>Grader</strong></div><pre class="codeblock">${escapeHtml(feedback)}</pre></div>` : ""}
-          ${reward !== undefined ? `<div class="kv"><strong>Reward</strong><span class="mono">${escapeHtml(String(reward))}</span></div>` : ""}
-          ${done !== undefined ? `<div class="kv"><strong>Done</strong><span class="mono">${escapeHtml(String(done))}</span></div>` : ""}
-          ${error ? `<div><div class="kv"><strong>Error</strong></div><pre class="codeblock" style="background:var(--err-soft); border-color:#efcccc; color:#7b1d1d;">${escapeHtml(error)}</pre></div>` : ""}
-        </div>
-      `;
-
-      nodes.traceFeed.appendChild(wrapper);
-      nodes.traceFeed.scrollTop = nodes.traceFeed.scrollHeight;
-      return wrapper;
+    function addFeed(title, body) {
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `<strong>${title} · ${now()}</strong>${String(body || "")}`;
+      nodes.feed.appendChild(div);
+      nodes.feed.scrollTop = nodes.feed.scrollHeight;
     }
 
-    function replacePendingTrace(node, resolved) {
-      if (!node || !node.parentElement) return appendTraceItem(resolved);
-      const replacement = appendTraceItem(resolved);
-      node.remove();
-      return replacement;
+    function setBusy(flag) {
+      state.busy = flag;
+      nodes.newEpisodeBtn.disabled = flag;
+      nodes.uploadBtn.disabled = flag;
+      nodes.sendBtn.disabled = flag;
+      nodes.resetChecksBtn.disabled = flag;
     }
 
-    function extractSchemaFromOutput(output) {
-      if (!output || typeof output !== "string") return [];
-      const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      if (lines.length === 0) return [];
-      const tables = [];
-      for (let i = 1; i < lines.length; i += 1) {
-        const value = lines[i].split("\t")[0];
-        if (value) tables.push(value);
-      }
-      return tables;
+    function renderGuide() {
+      const firstUndone = !state.guide.auth ? 0 : !state.guide.episode ? 1 : !state.guide.upload ? 2 : !state.guide.chat ? 3 : -1;
+      nodes.guideList.innerHTML = GUIDE_STEPS.map((step, idx) => {
+        const done = idx === 0 ? state.guide.auth : idx === 1 ? state.guide.episode : idx === 2 ? state.guide.upload : state.guide.chat;
+        const active = idx === firstUndone;
+        return [
+          `<li class="guide-item ${done ? "done" : ""} ${active ? "active" : ""}">`,
+          `<span class="guide-step">${done ? "OK" : String(idx + 1)}</span>`,
+          "<div>",
+          `<div>${step.title}</div>`,
+          `<div class="mini">${step.hint}</div>`,
+          "</div>",
+          "</li>",
+        ].join("");
+      }).join("");
     }
 
-    function renderSchema(tables) {
-      if (!Array.isArray(tables) || tables.length === 0) {
-        nodes.schemaList.style.display = "none";
-        nodes.schemaList.innerHTML = "";
-        nodes.schemaPlaceholder.textContent = "No table names returned by the SQL schema probe.";
-        nodes.schemaPlaceholder.style.display = "block";
+    function resetChecks() {
+      state.checks = {
+        [CHECKS.auth]: { status: "idle", detail: "No request yet." },
+        [CHECKS.reset]: { status: "idle", detail: "No request yet." },
+        [CHECKS.upload]: { status: "idle", detail: "No request yet." },
+        [CHECKS.nl]: { status: "idle", detail: "No request yet." },
+        [CHECKS.step]: { status: "idle", detail: "No request yet." },
+      };
+      renderChecklist();
+    }
+
+    function badgeFor(status) {
+      if (status === "pending") return "...";
+      if (status === "ok") return "OK";
+      if (status === "fail") return "X";
+      return "-";
+    }
+
+    function renderChecklist() {
+      const order = [CHECKS.auth, CHECKS.reset, CHECKS.upload, CHECKS.nl, CHECKS.step];
+      nodes.checklist.innerHTML = order.map((key) => {
+        const row = state.checks[key] || { status: "idle", detail: "No request yet." };
+        const css = row.status === "pending" || row.status === "ok" || row.status === "fail" ? row.status : "";
+        return [
+          `<div class="check-item ${css}">`,
+          `<span class="badge">${badgeFor(row.status)}</span>`,
+          "<div>",
+          `<div class="check-label">${CHECK_LABELS[key]}</div>`,
+          `<div class="check-meta">${row.detail || ""}</div>`,
+          "</div>",
+          "</div>",
+        ].join("");
+      }).join("");
+    }
+
+    function setCheck(key, status, detail) {
+      state.checks[key] = { status, detail };
+      renderChecklist();
+    }
+
+    function updateParamStatus() {
+      const base = (nodes.llmBaseUrlInput.value || "").trim();
+      const model = (nodes.llmModelInput.value || "").trim();
+      if (nodes.forceHeuristicInput.checked) {
+        nodes.paramsStatus.className = "note";
+        nodes.paramsStatus.textContent = "Heuristic mode forced. LLM will be skipped.";
         return;
       }
-      const unique = [...new Set(tables)];
-      nodes.schemaList.innerHTML = unique
-        .map((table) => `<li class="mono">${escapeHtml(table)}</li>`)
-        .join("");
-      nodes.schemaList.style.display = "grid";
-      nodes.schemaPlaceholder.style.display = "none";
+      if (base && model) {
+        nodes.paramsStatus.className = "note ok";
+        nodes.paramsStatus.textContent = "LLM API base URL and model configured. Next send uses these settings.";
+      } else {
+        nodes.paramsStatus.className = "note";
+        nodes.paramsStatus.textContent = "LLM parameters incomplete. Heuristic fallback may be used.";
+      }
     }
 
-    async function doReset() {
-      if (state.requestBusy) return;
-      setBusy(true);
-      try {
-        const payload = await postJson(state.config.endpoints.reset, {});
-        const obs = payload && payload.observation ? payload.observation : null;
-        const caseBrief = obs && obs.case_brief ? obs.case_brief : "No case brief returned by /reset.";
-        nodes.caseBrief.textContent = caseBrief;
-        state.episodeActive = true;
-        setKpisFromObservation(payload);
+    function authHeaders(includeJson = true) {
+      const h = {};
+      if (includeJson) h["Content-Type"] = "application/json";
+      if (state.sessionId) h["x-session-id"] = state.sessionId;
 
-        appendTraceItem({
-          title: "Episode reset",
-          status: "ok",
-          toolOutput: `Episode initialized through POST ${state.config.endpoints.reset}.`,
-          feedback: obs && obs.info ? `case_id: ${obs.info.case_id || "unknown"}` : "case_id unavailable",
-          reward: payload.reward,
-          done: payload.done,
+      const key = (nodes.apiKeyInput.value || "").trim();
+      if (key) {
+        h["x-api-key"] = key;
+        setCheck(CHECKS.auth, "ok", "x-api-key header included.");
+      } else {
+        setCheck(CHECKS.auth, "pending", "No API key provided. Works only if auth is disabled.");
+      }
+
+      state.guide.auth = key.length > 0 || true;
+      renderGuide();
+      return h;
+    }
+
+    async function postJson(path, payload, checkKey) {
+      if (checkKey) setCheck(checkKey, "pending", `POST ${path} started.`);
+      let resp;
+      try {
+        resp = await fetch(path, {
+          method: "POST",
+          headers: authHeaders(true),
+          body: JSON.stringify(payload),
         });
       } catch (err) {
-        appendTraceItem({
-          title: "Episode reset",
-          status: "error",
-          error: (err && err.message) ? err.message : "Unknown reset error",
-        });
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    async function runStep(action, titleSuffix = "Action step") {
-      if (state.requestBusy) return null;
-      if (!state.episodeActive) {
-        appendTraceItem({
-          title: "Execution blocked",
-          status: "error",
-          error: "Start an investigation first. /step requires an active episode.",
-        });
-        return null;
+        if (checkKey) setCheck(checkKey, "fail", (err && err.message) ? err.message : "Network error");
+        throw err;
       }
 
-      setBusy(true);
-      const pending = appendTraceItem({
-        title: titleSuffix,
-        status: "warning",
-        action,
-        pending: true,
-      });
-
+      const text = await resp.text();
+      let data = {};
       try {
-        const payload = await postJson(state.config.endpoints.step, { action });
-        const obs = payload.observation || {};
-
-        replacePendingTrace(pending, {
-          title: titleSuffix,
-          status: "ok",
-          action,
-          think: parseThinkTrace(action),
-          toolOutput: obs.tool_output || "No tool output.",
-          feedback: obs.grader_feedback || "No grader feedback.",
-          reward: payload.reward,
-          done: payload.done,
-        });
-
-        setKpisFromObservation(payload);
-        if (payload.done) {
-          state.episodeActive = false;
-          appendTraceItem({
-            title: "Episode finished",
-            status: "ok",
-            toolOutput: "Terminal step reached. Press Start Investigation for a new episode.",
-            reward: payload.reward,
-            done: payload.done,
-          });
-        }
-
-        return payload;
-      } catch (err) {
-        const status = Number(err && err.status);
-        const fullError = status === 422
-          ? `HTTP 422 validation error: ${(err && err.message) ? err.message : "Invalid action schema"}`
-          : (err && err.message) ? err.message : "Unknown /step error";
-
-        replacePendingTrace(pending, {
-          title: titleSuffix,
-          status: "error",
-          action,
-          think: parseThinkTrace(action),
-          error: fullError,
-        });
-        return null;
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    async function autoStepWithAgent() {
-      if (!state.latestObservation) {
-        appendTraceItem({
-          title: "Agent serving",
-          status: "error",
-          error: "No observation available yet. Start an investigation first.",
-        });
-        return;
-      }
-
-      const objective = (nodes.agentObjectiveInput.value || "").trim()
-        || "Investigate efficiently and maximize evidence-backed reward.";
-      const userMessage = (nodes.userMessageInput.value || "").trim();
-      const llm = {
-        enabled: true,
-        base_url: (nodes.llmBaseUrlInput.value || "").trim(),
-        model: (nodes.llmModelInput.value || "").trim(),
-        api_key: (nodes.llmApiKeyInput.value || "").trim(),
-      };
-      if (!llm.base_url || !llm.model) {
-        appendTraceItem({
-          title: "Agent generation",
-          status: state.config.onlineRl.enabled ? "warning" : "error",
-          error: state.config.onlineRl.enabled
-            ? "LLM config missing: online RL will continue with heuristic action arms."
-            : "Fill LLM Base URL and LLM Model first.",
-        });
-        if (!state.config.onlineRl.enabled) return;
-      }
-
-      let generated;
-      try {
-        const targetEndpoint = state.config.onlineRl.enabled
-          ? state.config.endpoints.agent_action_online
-          : state.config.endpoints.agent_action;
-        generated = await postJson(targetEndpoint, {
-          observation: state.latestObservation,
-          objective,
-          user_message: userMessage,
-          llm,
-        });
-      } catch (err) {
-        appendTraceItem({
-          title: "Agent generation",
-          status: "error",
-          error: (err && err.message) ? err.message : "Agent generation failed",
-        });
-        return;
-      }
-
-      const action = generated && generated.action;
-      if (!action || typeof action !== "object") {
-        appendTraceItem({
-          title: "Agent generation",
-          status: "error",
-          error: "Backend did not return a valid action object.",
-        });
-        return;
-      }
-
-      state.lastDecisionToken = String(generated.decision_token || "");
-      state.lastDecisionArm = String(generated.arm || "");
-
-      nodes.actionInput.value = JSON.stringify(action, null, 2);
-      const modelName = generated.model ? ` via ${generated.model}` : "";
-      const armLabel = state.lastDecisionArm ? ` [arm:${state.lastDecisionArm}]` : "";
-      const stepPayload = await runStep(action, `Agent Auto Step${modelName}${armLabel}`);
-
-      if (state.config.onlineRl.enabled && state.lastDecisionToken && stepPayload && Number.isFinite(stepPayload.reward)) {
-        try {
-          const update = await postJson(state.config.endpoints.online_rl_update, {
-            decision_token: state.lastDecisionToken,
-            reward: Number(stepPayload.reward),
-          });
-          appendTraceItem({
-            title: "Online RL weight update",
-            status: "ok",
-            toolOutput: `Decision ${state.lastDecisionArm || "unknown"} updated with reward ${Number(stepPayload.reward).toFixed(3)}.`,
-            feedback: `baseline=${Number(((update || {}).baseline ?? 0)).toFixed(3)} updates=${(update || {}).updates ?? "?"}`,
-          });
-          renderOnlineRlState((update || {}).online_rl || {}, true);
-        } catch (err) {
-          appendTraceItem({
-            title: "Online RL weight update",
-            status: "error",
-            error: (err && err.message) ? err.message : "Failed to update online policy weights",
-          });
-        }
-      }
-    }
-
-    function connectMetricsSse() {
-      if (state.metricsSource) {
-        state.metricsSource.close();
-      }
-
-      const source = new EventSource(state.config.endpoints.metrics);
-      state.metricsSource = source;
-
-      source.onopen = () => {
-        state.metricsConnected = true;
-        nodes.streamStatus.className = "stream-status live";
-        nodes.streamStatusText.textContent = "Metrics stream connected";
-      };
-
-      source.onmessage = (event) => {
-        try {
-          const metrics = JSON.parse(event.data);
-          setKpisFromMetrics(metrics);
-        } catch {
-          appendTraceItem({
-            title: "Metrics parse warning",
-            status: "warning",
-            error: `Received malformed metrics frame from ${state.config.endpoints.metrics}.`,
-          });
-        }
-      };
-
-      source.onerror = () => {
-        state.metricsConnected = false;
-        nodes.streamStatus.className = "stream-status down";
-        nodes.streamStatusText.textContent = "Metrics stream disconnected";
-      };
-    }
-
-    async function pingHealth() {
-      try {
-        const response = await fetch(state.config.endpoints.health, {
-          headers: buildHeaders(),
-          cache: "no-store",
-        });
-        const text = await response.text();
-        appendTraceItem({
-          title: "Health check",
-          status: response.ok ? "ok" : "error",
-          toolOutput: `GET ${state.config.endpoints.health} -> HTTP ${response.status}`,
-          feedback: text || "No payload",
-        });
-      } catch (err) {
-        appendTraceItem({
-          title: "Health check",
-          status: "error",
-          error: (err && err.message) ? err.message : "Health check failed",
-        });
-      }
-    }
-
-    nodes.resetBtn.addEventListener("click", () => {
-      doReset();
-    });
-
-    nodes.submitStepBtn.addEventListener("click", async () => {
-      let action;
-      try {
-        action = JSON.parse(nodes.actionInput.value || "{}");
+        data = text ? JSON.parse(text) : {};
       } catch {
-        appendTraceItem({
-          title: "Action parsing",
-          status: "error",
-          error: "Action payload is not valid JSON.",
-        });
+        data = { raw: text };
+      }
+
+      if (!resp.ok) {
+        const detail = (data && data.detail) ? data.detail : `HTTP ${resp.status}`;
+        if (checkKey) setCheck(checkKey, "fail", detail);
+        throw new Error(detail);
+      }
+
+      if (checkKey) setCheck(checkKey, "ok", `HTTP ${resp.status}`);
+      return data;
+    }
+
+    function buildLlmOverride() {
+      if (nodes.forceHeuristicInput.checked) {
+        return { enabled: false };
+      }
+      const base = (nodes.llmBaseUrlInput.value || "").trim();
+      const model = (nodes.llmModelInput.value || "").trim();
+      const apiKey = (nodes.llmApiKeyInput.value || "").trim();
+      const llm = {};
+      if (base) llm.base_url = base;
+      if (model) llm.model = model;
+      if (apiKey) llm.api_key = apiKey;
+      return Object.keys(llm).length > 0 ? llm : null;
+    }
+
+    function renderCurve() {
+      const svg = nodes.curveSvg;
+      const rewards = state.rewards;
+      if (!rewards.length) {
+        svg.innerHTML = '<text x="20" y="30" fill="#607388" font-size="14">No reward points yet</text>';
+        nodes.statLast.textContent = "-";
+        nodes.statAvg.textContent = "-";
+        nodes.statBest.textContent = "-";
         return;
       }
-      await runStep(action, `Step ${state.traceCount + 1}`);
-    });
 
-    nodes.autoStepBtn.addEventListener("click", async () => {
-      await autoStepWithAgent();
-    });
+      const min = Math.min(...rewards);
+      const max = Math.max(...rewards);
+      const range = Math.max(max - min, 1e-6);
+      const width = 800;
+      const height = 220;
+      const pad = 20;
+      const innerW = width - pad * 2;
+      const innerH = height - pad * 2;
 
-    nodes.uploadDatasetBtn.addEventListener("click", async () => {
-      await uploadDataset();
-    });
+      const points = rewards.map((r, i) => {
+        const x = pad + (rewards.length === 1 ? innerW / 2 : (i / (rewards.length - 1)) * innerW);
+        const y = pad + (1 - ((r - min) / range)) * innerH;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(" ");
 
-    nodes.loadSchemaBtn.addEventListener("click", async () => {
-      const action = {
-        kind: "sql_query",
-        sql_statement: "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
-        think_trace: "<think>List all available SQLite tables to ground investigation context.</think>",
-      };
-      const payload = await runStep(action, "Schema probe");
-      if (!payload || !payload.observation) return;
-      const tables = extractSchemaFromOutput(payload.observation.tool_output || "");
-      renderSchema(tables);
-    });
+      const avg = rewards.reduce((a, b) => a + b, 0) / rewards.length;
+      const last = rewards[rewards.length - 1];
+      const best = Math.max(...rewards);
 
-    nodes.pingHealthBtn.addEventListener("click", () => {
-      pingHealth();
-    });
+      svg.innerHTML = [
+        `<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#d7e0ec" />`,
+        `<line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#d7e0ec" />`,
+        `<polyline fill="none" stroke="#1467c2" stroke-width="3" points="${points}" />`,
+        `<text x="${pad}" y="${pad - 6}" fill="#607388" font-size="12">max ${max.toFixed(3)}</text>`,
+        `<text x="${pad}" y="${height - 4}" fill="#607388" font-size="12">min ${min.toFixed(3)}</text>`,
+      ].join("");
 
-    nodes.refreshOnlineRlBtn.addEventListener("click", async () => {
-      await fetchOnlineRlState();
-    });
+      nodes.statLast.textContent = last.toFixed(3);
+      nodes.statAvg.textContent = avg.toFixed(3);
+      nodes.statBest.textContent = best.toFixed(3);
+    }
 
-    nodes.resetOnlineRlBtn.addEventListener("click", async () => {
+    async function ensureEpisode() {
+      if (state.observation) return;
+      const reset = await postJson(state.endpoints.reset, {}, CHECKS.reset);
+      state.observation = reset.observation || {};
+      const info = state.observation.info || {};
+      nodes.statusLine.className = "note ok";
+      nodes.statusLine.textContent = `Episode ready: ${info.case_id || "unknown"}`;
+      addFeed("Episode", state.observation.case_brief || "Episode reset complete.");
+      state.guide.episode = true;
+      renderGuide();
+    }
+
+    async function newEpisode() {
+      setBusy(true);
       try {
-        const payload = await postJson(state.config.endpoints.online_rl_reset, {});
-        renderOnlineRlState((payload || {}).state || {}, true);
-        appendTraceItem({
-          title: "Online RL reset",
-          status: "ok",
-          toolOutput: "Online RL weights reset to initial values.",
-        });
+        state.observation = null;
+        await ensureEpisode();
       } catch (err) {
-        appendTraceItem({
-          title: "Online RL reset",
-          status: "error",
-          error: (err && err.message) ? err.message : "Failed to reset online RL state",
+        nodes.statusLine.className = "note err";
+        nodes.statusLine.textContent = (err && err.message) ? err.message : "Reset failed";
+        addFeed("Error", nodes.statusLine.textContent);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function uploadDataset() {
+      const fileInput = nodes.datasetFileInput;
+      if (!fileInput.files || fileInput.files.length === 0) {
+        setCheck(CHECKS.upload, "fail", "No file selected.");
+        nodes.uploadStatus.className = "note err";
+        nodes.uploadStatus.textContent = "Choose a CSV or ZIP file first.";
+        addFeed("Upload", "Choose a CSV or ZIP file first.");
+        return;
+      }
+
+      setBusy(true);
+      setCheck(CHECKS.upload, "pending", "Uploading dataset...");
+      try {
+        const form = new FormData();
+        form.append("file", fileInput.files[0]);
+        const ds = (nodes.datasetNameInput.value || "").trim();
+        if (ds) form.append("dataset_name", ds);
+        form.append("extract_zip", nodes.extractZipInput.checked ? "true" : "false");
+
+        const resp = await fetch(state.endpoints.upload, {
+          method: "POST",
+          headers: authHeaders(false),
+          body: form,
         });
+
+        const text = await resp.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = { raw: text };
+        }
+
+        if (!resp.ok) {
+          throw new Error((data && data.detail) ? data.detail : `HTTP ${resp.status}`);
+        }
+
+        setCheck(CHECKS.upload, "ok", `HTTP ${resp.status} | extracted=${data.extracted_count || 0}`);
+        nodes.uploadStatus.className = "note ok";
+        nodes.uploadStatus.textContent = `Uploaded ${data.dataset || "dataset"}, extracted: ${data.extracted_count || 0}.`;
+        addFeed("Upload", `${data.stored_file || "uploaded"}\nExtracted: ${data.extracted_count || 0}`);
+        state.guide.upload = true;
+        renderGuide();
+      } catch (err) {
+        const message = (err && err.message) ? err.message : "Upload failed";
+        setCheck(CHECKS.upload, "fail", message);
+        nodes.uploadStatus.className = "note err";
+        nodes.uploadStatus.textContent = message;
+        addFeed("Upload Error", message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function sendChat() {
+      const msg = (nodes.chatInput.value || "").trim();
+      if (!msg) return;
+
+      setBusy(true);
+      addFeed("You", msg);
+      nodes.chatInput.value = "";
+
+      try {
+        await ensureEpisode();
+
+        const objective = (nodes.objectiveInput.value || "").trim() || "Investigate Medicare fraud and summarize evidence.";
+        const payload = {
+          observation: state.observation,
+          objective,
+          user_message: msg,
+        };
+
+        const llm = buildLlmOverride();
+        if (llm) payload.llm = llm;
+
+        const generated = await postJson(state.endpoints.nlAction, payload, CHECKS.nl);
+        const action = generated.action || {};
+        const provider = String(generated.provider || "unknown");
+        const llmError = generated.llm_error ? `\nLLM error: ${String(generated.llm_error)}` : "";
+        addFeed("Agent Action", `Provider: ${provider}${llmError}\n\n${JSON.stringify(action, null, 2)}`);
+
+        const stepped = await postJson(state.endpoints.step, { action }, CHECKS.step);
+        state.observation = stepped.observation || state.observation;
+
+        const obs = stepped.observation || {};
+        const reward = Number(stepped.reward || 0);
+        state.rewards.push(reward);
+        renderCurve();
+
+        const feedback = obs.grader_feedback || "No grader feedback.";
+        const output = obs.tool_output || "No tool output.";
+        addFeed("Result", `Reward: ${reward.toFixed(3)}\n${feedback}\n\n${output}`);
+
+        state.guide.chat = true;
+        if (nodes.skipUploadInput.checked) {
+          state.guide.upload = true;
+        }
+        renderGuide();
+
+        if (stepped.done) {
+          addFeed("Episode", "Episode completed. Starting a new episode on next message.");
+          state.observation = null;
+        }
+      } catch (err) {
+        const message = (err && err.message) ? err.message : "Chat action failed";
+        nodes.statusLine.className = "note err";
+        nodes.statusLine.textContent = message;
+        addFeed("Error", message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function loadRuntimeConfig() {
+      try {
+        const resp = await fetch("/ui/config", { cache: "no-store" });
+        if (!resp.ok) return;
+        const cfg = await resp.json();
+        const ep = cfg.endpoints || {};
+        if (ep.session_reset) state.endpoints.reset = String(ep.session_reset);
+        if (ep.session_step) state.endpoints.step = String(ep.session_step);
+        if (ep.nl_action) state.endpoints.nlAction = String(ep.nl_action);
+        if (ep.upload_dataset) state.endpoints.upload = String(ep.upload_dataset);
+
+        const agent = cfg.agent || {};
+        if (agent.base_url && !nodes.llmBaseUrlInput.value) {
+          nodes.llmBaseUrlInput.value = String(agent.base_url);
+        }
+        if (agent.model && !nodes.llmModelInput.value) {
+          nodes.llmModelInput.value = String(agent.model);
+        }
+      } catch {
+        // No-op; defaults already set.
+      }
+    }
+
+    nodes.newEpisodeBtn.addEventListener("click", newEpisode);
+    nodes.uploadBtn.addEventListener("click", uploadDataset);
+    nodes.sendBtn.addEventListener("click", sendChat);
+    nodes.chatInput.addEventListener("keydown", (ev) => {
+      if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
+        sendChat();
       }
     });
-
-    nodes.clearTraceBtn.addEventListener("click", () => {
-      nodes.traceFeed.innerHTML = '<p class="trace-empty">Trace cleared. New events will appear from real backend interactions.</p>';
-      state.traceCount = 0;
+    nodes.clearBtn.addEventListener("click", () => {
+      nodes.feed.innerHTML = '<div class="item"><strong>System</strong>Feed cleared.</div>';
+    });
+    nodes.resetChecksBtn.addEventListener("click", () => {
+      resetChecks();
+      addFeed("Checklist", "Checklist reset to idle state.");
     });
 
-    nodes.templateBtn.addEventListener("click", () => {
-      nodes.actionInput.value = JSON.stringify({
-        kind: "sql_query",
-        sql_statement: "SELECT * FROM beneficiary_summary LIMIT 5",
-        think_trace: "<think>Inspect a small beneficiary sample before linking evidence.</think>",
-      }, null, 2);
+    [
+      nodes.llmBaseUrlInput,
+      nodes.llmModelInput,
+      nodes.llmApiKeyInput,
+      nodes.forceHeuristicInput,
+      nodes.objectiveInput,
+      nodes.apiKeyInput,
+      nodes.skipUploadInput,
+    ].forEach((node) => {
+      node.addEventListener("input", () => {
+        updateParamStatus();
+        renderGuide();
+      });
+      node.addEventListener("change", () => {
+        updateParamStatus();
+        renderGuide();
+      });
     });
 
     (async () => {
-      await loadDashboardConfig();
-      setBusy(false);
-      await fetchOnlineRlState();
-      startOnlineRlPolling();
-      connectMetricsSse();
+      state.sessionId = `medicare-ui-${Math.random().toString(36).slice(2, 12)}`;
+      nodes.sessionInfo.textContent = `Session: ${state.sessionId}`;
+      addFeed("Session", `Using HTTP session id: ${state.sessionId}`);
+      await loadRuntimeConfig();
+      resetChecks();
+      renderGuide();
+      updateParamStatus();
+      renderCurve();
     })();
   </script>
 </body>

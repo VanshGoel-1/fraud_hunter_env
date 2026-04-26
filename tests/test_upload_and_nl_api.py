@@ -66,3 +66,54 @@ def test_nl_action_requires_user_message():
 
     assert response.status_code == 400, response.text
     assert (response.json() or {}).get("detail") == "user_message is required"
+
+
+def test_nl_action_falls_back_when_agent_disabled():
+    server_app._AGENT_MODEL = ""
+    server_app._AGENT_BASE_URL = ""
+
+    client = TestClient(server_app.app)
+    response = client.post(
+        "/fraud_hunter/nl_action",
+        json={
+            "observation": {
+                "step_count": 0,
+                "tool_output": "",
+                "grader_feedback": "",
+            },
+            "objective": "Investigate medicare fraud efficiently.",
+            "user_message": "Find the most suspicious next move.",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json() or {}
+    assert isinstance(body.get("action"), dict)
+    assert body.get("provider") == "heuristic-fallback"
+    assert "llm_error" in body
+
+
+def test_stateful_http_session_reset_then_step_returns_output():
+    client = TestClient(server_app.app)
+    headers = {"x-session-id": "test-session-a"}
+
+    reset = client.post("/fraud_hunter/session_reset", headers=headers)
+    assert reset.status_code == 200, reset.text
+
+    step = client.post(
+        "/fraud_hunter/session_step",
+        headers=headers,
+        json={
+            "action": {
+                "kind": "sql_query",
+                "sql_statement": "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+                "think_trace": "<think>Inspect schema first.</think>",
+            }
+        },
+    )
+    assert step.status_code == 200, step.text
+    body = step.json() or {}
+    obs = body.get("observation") or {}
+    assert obs.get("step_count") == 1
+    assert isinstance(obs.get("tool_output"), str)
+    assert len((obs.get("tool_output") or "").strip()) > 0
