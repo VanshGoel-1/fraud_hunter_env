@@ -176,6 +176,7 @@ def main():
         fast_inference=True,
         max_lora_rank=LORA_RANK,
         gpu_memory_utilization=0.5,
+        enforce_eager=True,  # T4 (compute 7.5) hits a torch.compile/CUDAGraph bug
     )
 
     model = FastLanguageModel.get_peft_model(
