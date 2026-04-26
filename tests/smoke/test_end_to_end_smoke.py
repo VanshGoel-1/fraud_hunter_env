@@ -121,16 +121,20 @@ def test_seed_split_respects_train_and_eval_ranges_over_http():
     _post_json(client, "/fraud_hunter/seed_range", {"seed_min": 0, "seed_max": 8000})
     train_range = client.get("/fraud_hunter/seed_range")
     train_range.raise_for_status()
-    assert train_range.json() == {"seed_min": 0, "seed_max": 8000}
+    assert train_range.json()["seed_min"] == 0
+    assert train_range.json()["seed_max"] == 8000
 
     train_reset = _post_json(client, "/reset")
     train_info = (((train_reset or {}).get("observation") or {}).get("info") or {})
     assert "case_id" in train_info
 
+    # Scoped ranges are immutable once pinned unless explicitly cleared.
+    _post_json(client, "/fraud_hunter/seed_range", {"seed_min": None, "seed_max": None})
     _post_json(client, "/fraud_hunter/seed_range", {"seed_min": 8001, "seed_max": 10000})
     eval_range = client.get("/fraud_hunter/seed_range")
     eval_range.raise_for_status()
-    assert eval_range.json() == {"seed_min": 8001, "seed_max": 10000}
+    assert eval_range.json()["seed_min"] == 8001
+    assert eval_range.json()["seed_max"] == 10000
 
     eval_reset = _post_json(client, "/reset")
     eval_info = (((eval_reset or {}).get("observation") or {}).get("info") or {})

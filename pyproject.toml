@@ -18,6 +18,7 @@ dependencies = [
     "openenv-core[core]>=0.2.2",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.9",
     # Multi-modal evidence: PDF generation (Pillow) + OCR (pdfplumber, pytesseract)
     # The Dockerfile also installs the `tesseract-ocr` system package at runtime.
     "Pillow>=10.0.0",

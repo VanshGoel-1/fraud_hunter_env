@@ -24,6 +24,7 @@ import json
 import os
 import sqlite3
 import threading
+import time
 import traceback
 from contextlib import redirect_stdout
 from typing import Callable, Optional
@@ -321,6 +322,7 @@ def execute_sql(
     sql: str,
     conn: sqlite3.Connection,
     max_rows: int = 50,
+    timeout_seconds: float = 1.5,
 ) -> tuple[str, Optional[str], int]:
     """
     Execute a restricted SQL SELECT statement directly.
@@ -336,7 +338,19 @@ def execute_sql(
         if pat in sql_upper:
             return "", f"Forbidden SQL operation: {pat.strip()}", 0
 
+    timed_out = False
+
+    def _progress_handler() -> int:
+        nonlocal timed_out
+        if time.monotonic() >= deadline:
+            timed_out = True
+            return 1
+        return 0
+
+    deadline = time.monotonic() + max(timeout_seconds, 0.05)
+
     try:
+        conn.set_progress_handler(_progress_handler, 1_000)
         cur = conn.execute(sql)
         rows = cur.fetchmany(max_rows)
         cols = [d[0] for d in cur.description] if cur.description else []
@@ -346,5 +360,14 @@ def execute_sql(
         for row in rows:
             lines.append("\t".join(str(v) for v in row))
         return "\n".join(lines), None, len(rows)
+    except sqlite3.OperationalError as e:
+        if timed_out and "interrupted" in str(e).lower():
+            return "", f"SQL_TIMEOUT: query exceeded {timeout_seconds:.2f}s", 0
+        return "", f"SQL_ERROR: {e}", 0
     except Exception as e:
         return "", f"SQL_ERROR: {e}", 0
+    finally:
+        try:
+            conn.set_progress_handler(None, 0)
+        except Exception:
+            pass

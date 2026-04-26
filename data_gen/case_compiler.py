@@ -27,6 +27,7 @@ Quality primitives (kept from the previous CMS-only compiler):
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
 import random
@@ -367,7 +368,8 @@ def generate_multimodal_aks_case(
     # Deterministic seeding: combine the case_id with an optional seed so the
     # same (case_id, seed) pair always reproduces byte-for-byte.
     if rng_seed is None:
-        rng_seed = abs(hash(case_id)) % (2**31)
+        digest = hashlib.sha256(case_id.encode("utf-8")).digest()
+        rng_seed = int.from_bytes(digest[:8], "big") % (2**31)
     rng = random.Random(rng_seed)
 
     conn = sqlite3.connect(str(db_path))

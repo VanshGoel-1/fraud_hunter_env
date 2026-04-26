@@ -1,675 +1,1503 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fraud Hunter AI — RLVR Dashboard</title>
-    <meta name="description" content="Real-time monitoring dashboard for the Government Fraud Hunter AI reinforcement learning environment">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <style>
-        :root {
-            --bg-primary: #0a0e17;
-            --bg-secondary: #111827;
-            --bg-card: rgba(17, 24, 39, 0.8);
-            --bg-card-hover: rgba(30, 41, 59, 0.9);
-            --border: rgba(59, 130, 246, 0.15);
-            --border-active: rgba(59, 130, 246, 0.5);
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --text-muted: #64748b;
-            --accent-blue: #3b82f6;
-            --accent-cyan: #06b6d4;
-            --accent-green: #10b981;
-            --accent-amber: #f59e0b;
-            --accent-red: #ef4444;
-            --accent-purple: #8b5cf6;
-            --gradient-1: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            --gradient-2: linear-gradient(135deg, #06b6d4, #10b981);
-            --gradient-3: linear-gradient(135deg, #f59e0b, #ef4444);
-            --glow-blue: 0 0 20px rgba(59, 130, 246, 0.3);
-            --glow-green: 0 0 20px rgba(16, 185, 129, 0.3);
-            --glow-red: 0 0 20px rgba(239, 68, 68, 0.3);
-        }
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fraud Hunter Audit Console</title>
+  <meta name="description" content="Audit-grade investigation console for FraudHunterEnvironment.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --line: #dde3ed;
+      --line-strong: #c9d2df;
+      --text: #1d2735;
+      --muted: #657487;
+      --accent: #0f6ecf;
+      --accent-soft: #eaf2fd;
+      --ok: #0f8a53;
+      --ok-soft: #eaf8f1;
+      --warn: #9a5f00;
+      --warn-soft: #fff4df;
+      --err: #ad2a2a;
+      --err-soft: #ffefef;
+      --shadow: 0 8px 28px rgba(28, 45, 66, 0.06);
+      --radius: 12px;
+    }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { box-sizing: border-box; }
 
-        body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 100% -20%, #edf5ff 0%, rgba(237, 245, 255, 0) 52%),
+        radial-gradient(circle at -20% 120%, #eefaf4 0%, rgba(238, 250, 244, 0) 45%),
+        var(--bg);
+      min-height: 100%;
+    }
 
-        .bg-grid {
-            position: fixed; inset: 0; z-index: -1;
-            background-image:
-                radial-gradient(ellipse 800px 500px at 50% 0%, rgba(59,130,246,0.08) 0%, transparent 70%),
-                linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
-            background-size: 100%, 60px 60px, 60px 60px;
-        }
+    .app {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 12px;
+      min-height: 100vh;
+    }
 
-        .header {
-            padding: 24px 40px;
-            display: flex; align-items: center; justify-content: space-between;
-            border-bottom: 1px solid var(--border);
-            backdrop-filter: blur(20px);
-            position: sticky; top: 0; z-index: 100;
-        }
+    .header {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
 
-        .header h1 {
-            font-size: 24px; font-weight: 800;
-            background: var(--gradient-1); -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: -0.5px;
-        }
+    .header-title {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
 
-        .header .badge {
-            display: flex; align-items: center; gap: 8px;
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            border-radius: 20px; padding: 6px 14px;
-            font-size: 13px; color: var(--accent-green);
-        }
+    .header-title h1 {
+      font-size: 19px;
+      line-height: 1.2;
+      margin: 0;
+      letter-spacing: -0.01em;
+    }
 
-        .badge .dot {
-            width: 8px; height: 8px; border-radius: 50%;
-            background: var(--accent-green);
-            animation: pulse 2s infinite;
-        }
+    .header-title p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
-            50% { opacity: 0.7; box-shadow: 0 0 0 6px transparent; }
-        }
+    .stream-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      font-size: 12px;
+      color: var(--muted);
+      background: #fafcff;
+      white-space: nowrap;
+    }
 
-        .dashboard { padding: 32px 40px; max-width: 1440px; margin: 0 auto; }
+    .stream-status .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #a3afbf;
+    }
 
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px; margin-bottom: 32px;
-        }
+    .stream-status.live {
+      color: var(--ok);
+      border-color: #b7dfca;
+      background: var(--ok-soft);
+    }
 
-        .stat-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px; padding: 20px 24px;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
+    .stream-status.live .dot {
+      background: var(--ok);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
 
-        .stat-card:hover {
-            border-color: var(--border-active);
-            transform: translateY(-2px);
-            box-shadow: var(--glow-blue);
-        }
+    .stream-status.down {
+      color: var(--err);
+      border-color: #efcccc;
+      background: var(--err-soft);
+    }
 
-        .stat-card .label {
-            font-size: 12px; font-weight: 600;
-            text-transform: uppercase; letter-spacing: 1px;
-            color: var(--text-muted); margin-bottom: 8px;
-        }
+    @keyframes pulse {
+      0% { opacity: 0.35; }
+      50% { opacity: 1; }
+      100% { opacity: 0.35; }
+    }
 
-        .stat-card .value {
-            font-size: 32px; font-weight: 800;
-            background: var(--gradient-1); -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
 
-        .stat-card .sub {
-            font-size: 13px; color: var(--text-secondary); margin-top: 4px;
-        }
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 11px 12px;
+    }
 
-        .grid-2 {
-            display: grid; grid-template-columns: 1fr 1fr;
-            gap: 24px; margin-bottom: 24px;
-        }
+    .kpi .label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
 
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px; padding: 24px;
-            backdrop-filter: blur(10px);
-        }
+    .kpi .value {
+      font-size: 25px;
+      font-weight: 700;
+      line-height: 1;
+    }
 
-        .card h3 {
-            font-size: 16px; font-weight: 700;
-            color: var(--text-primary); margin-bottom: 16px;
-            display: flex; align-items: center; gap: 8px;
-        }
+    .kpi .hint {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
 
-        .card h3 .icon { font-size: 20px; }
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(290px, 38%) minmax(340px, 62%);
+      gap: 12px;
+      min-height: 0;
+    }
 
-        .chart-container { position: relative; height: 260px; }
+    .pane {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+    }
 
-        /* Tier progression */
-        .tier-bar {
-            display: flex; gap: 4px; margin-top: 12px;
-        }
-        .tier-bar .segment {
-            flex: 1; height: 36px; border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 12px; font-weight: 700;
-            transition: all 0.3s;
-        }
-        .tier-bar .segment.active {
-            transform: scaleY(1.15);
-            box-shadow: var(--glow-blue);
-        }
+    .pane-header {
+      border-bottom: 1px solid var(--line);
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
 
-        /* Trace viewer */
-        .trace-container {
-            max-height: 300px; overflow-y: auto;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 12px; line-height: 1.7;
-        }
+    .pane-header h2 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0.01em;
+    }
 
-        .trace-step {
-            padding: 10px 14px; border-radius: 8px;
-            margin-bottom: 6px;
-            border-left: 3px solid transparent;
-            transition: all 0.2s;
-        }
+    .pane-body {
+      padding: 12px;
+      overflow: auto;
+      min-height: 0;
+    }
 
-        .trace-step.think {
-            background: rgba(139,92,246,0.08);
-            border-left-color: var(--accent-purple);
-            color: #c4b5fd;
-        }
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
 
-        .trace-step.action {
-            background: rgba(59,130,246,0.08);
-            border-left-color: var(--accent-blue);
-            color: #93c5fd;
-        }
+    .section:last-child { margin-bottom: 0; }
 
-        .trace-step.reward {
-            background: rgba(16,185,129,0.08);
-            border-left-color: var(--accent-green);
-            color: #6ee7b7;
-        }
+    .section-title {
+      margin: 0;
+      padding: 8px 10px;
+      font-size: 12px;
+      background: #fafcff;
+      border-bottom: 1px solid var(--line);
+      color: #2f3b4b;
+      letter-spacing: 0.02em;
+    }
 
-        .trace-step.penalty {
-            background: rgba(239,68,68,0.08);
-            border-left-color: var(--accent-red);
-            color: #fca5a5;
-        }
+    .mono {
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
 
-        /* Typology bars */
-        .typology-row {
-            display: flex; align-items: center; gap: 12px;
-            margin-bottom: 8px;
-        }
+    .brief {
+      white-space: pre-wrap;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+      padding: 10px;
+    }
 
-        .typology-row .name {
-            width: 160px; font-size: 12px;
-            color: var(--text-secondary); text-align: right;
-        }
+    .placeholder {
+      margin: 0;
+      padding: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
 
-        .typology-row .bar-bg {
-            flex: 1; height: 20px; border-radius: 6px;
-            background: rgba(255,255,255,0.04); overflow: hidden;
-        }
+    .schema-list {
+      margin: 0;
+      list-style: none;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 6px;
+    }
 
-        .typology-row .bar-fill {
-            height: 100%; border-radius: 6px;
-            transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
-        }
+    .schema-list li {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 9px;
+      font-size: 12px;
+      background: #fcfdff;
+    }
 
-        .typology-row .val {
-            width: 50px; font-size: 12px; font-weight: 600;
-            color: var(--text-primary); text-align: right;
-        }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
 
-        /* Gauge */
-        .gauge-wrap { text-align: center; padding: 20px 0; }
-        .gauge-value {
-            font-size: 56px; font-weight: 900;
-            background: var(--gradient-2); -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .gauge-label { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+    .auth-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
 
-        /* Before/after table */
-        .compare-table {
-            width: 100%; border-collapse: separate;
-            border-spacing: 0 4px;
-        }
+    .auth-note {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fafcff;
+      color: var(--muted);
+    }
 
-        .compare-table th {
-            font-size: 11px; text-transform: uppercase;
-            letter-spacing: 1px; color: var(--text-muted);
-            padding: 8px 12px; text-align: left;
-        }
+    .auth-note.warn {
+      border-color: #f2d8a8;
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
 
-        .compare-table td {
-            padding: 10px 12px; font-size: 14px;
-            background: rgba(255,255,255,0.02);
-            border-top: 1px solid rgba(255,255,255,0.04);
-        }
+    .controls input {
+      height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 0 10px;
+      font-size: 13px;
+      color: var(--text);
+      background: #fff;
+    }
 
-        .compare-table td:first-child { border-radius: 8px 0 0 8px; }
-        .compare-table td:last-child { border-radius: 0 8px 8px 0; }
+    .button {
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      color: var(--text);
+      border-radius: 8px;
+      height: 34px;
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
 
-        .delta-positive { color: var(--accent-green); font-weight: 600; }
-        .delta-negative { color: var(--accent-red); font-weight: 600; }
+    .button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
 
-        /* Disconnected banner */
-        .disconnect-banner {
-            display: none;
-            background: rgba(239, 68, 68, 0.12);
-            border: 1px solid rgba(239, 68, 68, 0.4);
-            border-radius: 12px;
-            padding: 14px 20px;
-            margin-bottom: 24px;
-            color: #fca5a5;
-            font-size: 14px;
-        }
-        .disconnect-banner.active { display: block; }
-        .disconnect-banner code {
-            background: rgba(0,0,0,0.3);
-            padding: 1px 6px;
-            border-radius: 4px;
-        }
+    .button:hover { filter: brightness(0.98); }
+    .button:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* Empty-state placeholders */
-        .empty-state {
-            color: var(--text-muted);
-            font-size: 13px;
-            text-align: center;
-            padding: 24px 12px;
-            font-style: italic;
-        }
-        .empty-state code {
-            background: rgba(0,0,0,0.3);
-            padding: 1px 6px;
-            border-radius: 4px;
-            font-style: normal;
-        }
+    .composer {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px;
+      margin-bottom: 10px;
+      background: #fcfdff;
+    }
 
-        @media (max-width: 900px) {
-            .grid-2 { grid-template-columns: 1fr; }
-            .dashboard { padding: 16px; }
-            .header { padding: 16px; }
-        }
-    </style>
+    .composer-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 7px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .composer-head span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    textarea {
+      width: 100%;
+      resize: vertical;
+      min-height: 126px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.45;
+      background: #fff;
+      color: var(--text);
+    }
+
+    .trace {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      min-height: 300px;
+      max-height: 58vh;
+      overflow: auto;
+      background: #fcfdff;
+      padding: 8px;
+    }
+
+    .trace-empty {
+      margin: 0;
+      padding: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .trace-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .trace-item:last-child { margin-bottom: 0; }
+
+    .trace-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      background: #fafcff;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .trace-title {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      font-weight: 600;
+      color: #304155;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: #fff;
+    }
+
+    .pill.ok { background: var(--ok-soft); border-color: #b7dfca; color: var(--ok); }
+    .pill.warn { background: var(--warn-soft); border-color: #f2d8a8; color: var(--warn); }
+    .pill.err { background: var(--err-soft); border-color: #efcccc; color: var(--err); }
+
+    .trace-body {
+      padding: 9px 10px 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .kv {
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .kv strong {
+      display: inline-block;
+      min-width: 92px;
+      color: #32455c;
+    }
+
+    .codeblock {
+      margin: 0;
+      padding: 9px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fafcff;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    details.think {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f5f9ff;
+      padding: 6px 8px;
+    }
+
+    details.think summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: #295a8d;
+      font-weight: 600;
+    }
+
+    .typing {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .typing .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .meta-grid {
+      margin: 0;
+      padding: 10px;
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      font-size: 12px;
+    }
+
+    .meta-grid li {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fcfdff;
+    }
+
+    .meta-grid .key {
+      display: block;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    @media (max-width: 1080px) {
+      .kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .trace {
+        max-height: 48vh;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .app {
+        padding: 10px;
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      .auth-bar {
+        grid-template-columns: 1fr;
+      }
+
+      .controls .button {
+        width: 100%;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div class="bg-grid"></div>
-
+  <div class="app">
     <header class="header">
-        <h1>🔍 Fraud Hunter AI — RLVR Dashboard</h1>
-        <div class="badge"><div class="dot"></div> Environment Live</div>
+      <div class="header-title">
+        <h1>Fraud Hunter Investigation Console</h1>
+        <p>Real-time OpenEnv audit feed for judges. No simulated values.</p>
+      </div>
+      <div id="streamStatus" class="stream-status"><span class="dot"></span><span id="streamStatusText">Metrics stream idle</span></div>
     </header>
 
-    <main class="dashboard">
-        <div id="disconnectBanner" class="disconnect-banner">
-            ⚠ Disconnected from <code>/metrics</code> — start a client (e.g. <code>python eval.py --episodes 5</code>) to populate live data. KPIs are frozen at last known values.
+    <section class="kpis">
+      <article class="kpi">
+        <div class="label">Episode Reward</div>
+        <div id="kpiReward" class="value">-</div>
+        <div class="hint">From latest real response</div>
+      </article>
+      <article class="kpi">
+        <div class="label">Step Count</div>
+        <div id="kpiStep" class="value">-</div>
+        <div class="hint">Current active episode</div>
+      </article>
+      <article class="kpi">
+        <div class="label">Difficulty Tier</div>
+        <div id="kpiTier" class="value">-</div>
+        <div class="hint">Reset/step + metrics feed</div>
+      </article>
+      <article class="kpi">
+        <div class="label">Replay Hash</div>
+        <div id="kpiReplay" class="value mono" style="font-size:13px; line-height:1.25;">-</div>
+        <div class="hint">From observation info</div>
+      </article>
+    </section>
+
+    <section class="workspace">
+      <aside class="pane">
+        <div class="pane-header">
+          <h2>Source and Case Context</h2>
+          <button id="loadSchemaBtn" class="button" disabled>Load Schema via sql_query</button>
         </div>
+        <div class="pane-body">
+          <section class="section">
+            <h3 class="section-title">Case Brief</h3>
+            <pre id="caseBrief" class="brief placeholder">Press Start Investigation to request /reset.</pre>
+          </section>
 
-        <!-- KPI Row -->
-        <section class="stats-row">
-            <div class="stat-card">
-                <div class="label">Current Tier</div>
-                <div class="value" id="kpi-tier">1</div>
-                <div class="sub">RLVE Difficulty</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Episode Reward</div>
-                <div class="value" id="kpi-reward">0.0</div>
-                <div class="sub">Rolling avg (20 eps)</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Agentic Recall</div>
-                <div class="value" id="kpi-recall">0%</div>
-                <div class="sub">Tables queried / required</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">CoT Validity</div>
-                <div class="value" id="kpi-cot">0%</div>
-                <div class="sub">Steps with valid &lt;think&gt;</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Format Errors</div>
-                <div class="value" id="kpi-errors">0</div>
-                <div class="sub">Schema violations</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Proof Chains</div>
-                <div class="value" id="kpi-chains">0</div>
-                <div class="sub">Complete E→L→C chains</div>
-            </div>
-        </section>
+          <section class="section">
+            <h3 class="section-title">SQLite Structure (Observed)</h3>
+            <p id="schemaPlaceholder" class="placeholder">Not loaded. Click “Load Schema via sql_query” after reset.</p>
+            <ul id="schemaList" class="schema-list" style="display:none"></ul>
+          </section>
 
-        <!-- Charts Row 1 -->
-        <section class="grid-2">
-            <div class="card">
-                <h3><span class="icon">📈</span> Reward Curve</h3>
-                <div class="chart-container"><canvas id="rewardChart"></canvas></div>
-            </div>
-            <div class="card">
-                <h3><span class="icon">🎯</span> Tier Progression</h3>
-                <div class="chart-container"><canvas id="tierChart"></canvas></div>
-                <div class="tier-bar" id="tierBar"></div>
-            </div>
-        </section>
+          <section class="section">
+            <h3 class="section-title">Latest Observation Metadata</h3>
+            <ul id="metaGrid" class="meta-grid" style="display:none"></ul>
+            <p id="metaPlaceholder" class="placeholder">No observation has been received yet.</p>
+          </section>
 
-        <!-- Charts Row 2 -->
-        <section class="grid-2">
-            <div class="card">
-                <h3><span class="icon">🧬</span> Per-Policy Performance (from eval_results.json)</h3>
-                <div id="policyBars"><div class="empty-state">Run <code>python eval.py --episodes 30</code> to populate.</div></div>
+          <section class="section">
+            <h3 class="section-title">Online RL Policy Status</h3>
+            <div style="padding: 8px 10px; display:flex; gap:8px;">
+              <button id="refreshOnlineRlBtn" class="button">Refresh RL State</button>
+              <button id="resetOnlineRlBtn" class="button">Reset RL Weights</button>
             </div>
-            <div class="card">
-                <h3><span class="icon">⚡</span> Action Error Rate</h3>
-                <div class="gauge-wrap">
-                    <div class="gauge-value" id="errorGauge">—</div>
-                    <div class="gauge-label">Format validation failures (live)</div>
-                </div>
-                <div class="chart-container" style="height:150px"><canvas id="errorChart"></canvas></div>
+            <ul id="onlineRlGrid" class="meta-grid" style="display:none"></ul>
+            <p id="onlineRlPlaceholder" class="placeholder">Online RL state will appear here after config load.</p>
+          </section>
+        </div>
+      </aside>
+
+      <section class="pane">
+        <div class="pane-header">
+          <h2>Agent Trace</h2>
+          <button id="clearTraceBtn" class="button">Clear Trace</button>
+        </div>
+        <div class="pane-body">
+          <p id="authNote" class="auth-note">Loading backend runtime configuration...</p>
+
+          <div class="auth-bar">
+            <input id="apiKeyInput" type="password" placeholder="Optional X-API-Key (required if server auth is enabled)">
+            <input id="seedScopeInput" type="text" placeholder="Optional X-Seed-Scope (e.g. judge-demo)">
+          </div>
+
+          <div class="auth-bar" style="grid-template-columns: 1fr;">
+            <input id="agentObjectiveInput" type="text" placeholder="Agent objective (used by LLM auto-step)">
+          </div>
+
+          <div class="auth-bar" style="grid-template-columns: 1fr;">
+            <input id="userMessageInput" type="text" placeholder="Natural-language instruction (e.g. Find fraud links and contradictions)">
+          </div>
+
+          <div class="auth-bar">
+            <input id="llmBaseUrlInput" type="text" placeholder="LLM Base URL (OpenAI-compatible, e.g. http://localhost:11434/v1)">
+            <input id="llmModelInput" type="text" placeholder="LLM Model (e.g. llama3.1:8b or gpt-4o-mini)">
+          </div>
+
+          <div class="auth-bar" style="grid-template-columns: 1fr;">
+            <input id="llmApiKeyInput" type="password" placeholder="LLM API Key (optional for local endpoints)">
+          </div>
+
+          <div class="controls">
+            <button id="resetBtn" class="button primary">Start Investigation</button>
+            <button id="submitStepBtn" class="button" disabled>Run Step</button>
+            <button id="autoStepBtn" class="button" disabled>Auto Step (LLM)</button>
+            <button id="pingHealthBtn" class="button">Check Backend Health</button>
+          </div>
+
+          <div class="composer">
+            <div class="composer-head">
+              <span>Dataset Upload (CSV/ZIP) via <span class="mono">POST /fraud_hunter/upload_dataset</span></span>
+              <button id="uploadDatasetBtn" class="button">Upload Dataset</button>
             </div>
-        </section>
-
-        <!-- Before/After + Latest Episode -->
-        <section class="grid-2">
-            <div class="card">
-                <h3><span class="icon">🔄</span> Random vs Trained (from eval_results.json)</h3>
-                <table class="compare-table">
-                    <thead>
-                        <tr><th>Metric</th><th>Random</th><th>Trained</th><th>Δ</th></tr>
-                    </thead>
-                    <tbody id="compareBody"><tr><td colspan="4" class="empty-state">Run <code>python eval.py --episodes 30</code> to populate.</td></tr></tbody>
-                </table>
+            <div class="auth-bar" style="grid-template-columns: 1fr 1fr; margin-bottom:8px;">
+              <input id="datasetNameInput" type="text" placeholder="Dataset name (optional, e.g. beneficiary_2026)">
+              <input id="datasetFileInput" type="file" accept=".csv,.zip">
             </div>
-            <div class="card">
-                <h3><span class="icon">📡</span> Latest Episode Metrics (live SSE)</h3>
-                <pre id="latestEpisode" class="trace-container empty-state">Waiting for first episode from /metrics…</pre>
+            <label style="display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);">
+              <input id="extractZipInput" type="checkbox" checked>
+              Extract ZIP after upload
+            </label>
+            <p id="uploadStatus" class="placeholder" style="padding:8px 0 0;">No dataset uploaded yet.</p>
+            <ul id="uploadFilesList" class="schema-list" style="display:none"></ul>
+          </div>
+
+          <div class="composer">
+            <div class="composer-head">
+              <span>Action JSON payload for <span class="mono">POST /step</span> (strict OpenEnv action)</span>
+              <button id="templateBtn" class="button">Insert sql_query Template</button>
             </div>
-        </section>
-    </main>
+            <textarea id="actionInput" class="mono" spellcheck="false" placeholder='{
+  "kind": "sql_query",
+  "sql_statement": "SELECT name FROM sqlite_master WHERE type=\"table\" ORDER BY name",
+  "think_trace": "<think>Inspect evidence schema before further actions.</think>"
+}'></textarea>
+          </div>
 
-    <script>
-        // ── Live data only — no simulation, no hardcoded fallbacks ────────────
+          <div id="traceFeed" class="trace">
+            <p class="trace-empty">Trace is empty. Start an episode to stream real action and observation records.</p>
+          </div>
+        </div>
+      </section>
+    </section>
+  </div>
 
-        const rewardHistory = [];
-        const tierHistory = [];
-        const errorHistory = [];
-        let episode = 0;
+  <script>
+    const state = {
+      config: {
+        authRequired: false,
+        agent: {
+          enabled: false,
+          model: "",
+        },
+        onlineRl: {
+          enabled: false,
+        },
+        upload: {
+          enabled: false,
+          maxBytes: 0,
+        },
+        endpoints: {
+          health: "/health",
+          reset: "/reset",
+          step: "/step",
+          agent_action: "/fraud_hunter/agent_action",
+          agent_action_online: "/fraud_hunter/agent_action_online",
+          upload_dataset: "/fraud_hunter/upload_dataset",
+          online_rl_update: "/fraud_hunter/online_rl/update",
+          online_rl_state: "/fraud_hunter/online_rl/state",
+          online_rl_reset: "/fraud_hunter/online_rl/reset",
+          metrics: "/metrics",
+        },
+      },
+      episodeActive: false,
+      requestBusy: false,
+      traceCount: 0,
+      metricsSource: null,
+      metricsConnected: false,
+      latestInfo: null,
+      latestObservation: null,
+      lastDecisionToken: "",
+      lastDecisionArm: "",
+      onlineRlPollTimer: null,
+    };
 
-        // ── Reward Chart ──────────────────────────────────────────────────────
-        const rewardCtx = document.getElementById('rewardChart').getContext('2d');
-        const rewardChart = new Chart(rewardCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Episode Reward',
-                    data: [],
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59,130,246,0.1)',
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 2,
-                    borderWidth: 2,
-                }, {
-                    label: 'Rolling Avg',
-                    data: [],
-                    borderColor: '#8b5cf6',
-                    borderDash: [5, 5],
-                    tension: 0.4,
-                    pointRadius: 0,
-                    borderWidth: 2,
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } }
-                },
-                plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } }
-            }
+    const nodes = {
+      streamStatus: document.getElementById("streamStatus"),
+      streamStatusText: document.getElementById("streamStatusText"),
+      kpiReward: document.getElementById("kpiReward"),
+      kpiStep: document.getElementById("kpiStep"),
+      kpiTier: document.getElementById("kpiTier"),
+      kpiReplay: document.getElementById("kpiReplay"),
+      authNote: document.getElementById("authNote"),
+      apiKeyInput: document.getElementById("apiKeyInput"),
+      agentObjectiveInput: document.getElementById("agentObjectiveInput"),
+      userMessageInput: document.getElementById("userMessageInput"),
+      llmBaseUrlInput: document.getElementById("llmBaseUrlInput"),
+      llmModelInput: document.getElementById("llmModelInput"),
+      llmApiKeyInput: document.getElementById("llmApiKeyInput"),
+      caseBrief: document.getElementById("caseBrief"),
+      schemaList: document.getElementById("schemaList"),
+      schemaPlaceholder: document.getElementById("schemaPlaceholder"),
+      metaGrid: document.getElementById("metaGrid"),
+      metaPlaceholder: document.getElementById("metaPlaceholder"),
+      onlineRlGrid: document.getElementById("onlineRlGrid"),
+      onlineRlPlaceholder: document.getElementById("onlineRlPlaceholder"),
+      datasetNameInput: document.getElementById("datasetNameInput"),
+      datasetFileInput: document.getElementById("datasetFileInput"),
+      extractZipInput: document.getElementById("extractZipInput"),
+      uploadDatasetBtn: document.getElementById("uploadDatasetBtn"),
+      uploadStatus: document.getElementById("uploadStatus"),
+      uploadFilesList: document.getElementById("uploadFilesList"),
+      resetBtn: document.getElementById("resetBtn"),
+      submitStepBtn: document.getElementById("submitStepBtn"),
+      autoStepBtn: document.getElementById("autoStepBtn"),
+      refreshOnlineRlBtn: document.getElementById("refreshOnlineRlBtn"),
+      resetOnlineRlBtn: document.getElementById("resetOnlineRlBtn"),
+      pingHealthBtn: document.getElementById("pingHealthBtn"),
+      loadSchemaBtn: document.getElementById("loadSchemaBtn"),
+      clearTraceBtn: document.getElementById("clearTraceBtn"),
+      actionInput: document.getElementById("actionInput"),
+      templateBtn: document.getElementById("templateBtn"),
+      traceFeed: document.getElementById("traceFeed"),
+      seedScopeInput: document.getElementById("seedScopeInput"),
+    };
+
+    function buildHeaders() {
+      const headers = { "Content-Type": "application/json" };
+      const apiKey = (nodes.apiKeyInput.value || "").trim();
+      if (apiKey) headers["x-api-key"] = apiKey;
+      const scope = (nodes.seedScopeInput.value || "").trim();
+      if (scope) headers["x-seed-scope"] = scope;
+      return headers;
+    }
+
+    function buildAuthHeaders() {
+      const headers = {};
+      const apiKey = (nodes.apiKeyInput.value || "").trim();
+      if (apiKey) headers["x-api-key"] = apiKey;
+      const scope = (nodes.seedScopeInput.value || "").trim();
+      if (scope) headers["x-seed-scope"] = scope;
+      return headers;
+    }
+
+    function setAuthNote(message, mode = "info") {
+      nodes.authNote.textContent = message;
+      nodes.authNote.className = mode === "warn" ? "auth-note warn" : "auth-note";
+    }
+
+    async function loadDashboardConfig() {
+      try {
+        const response = await fetch("/ui/config", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`config endpoint returned HTTP ${response.status}`);
+        }
+        const cfg = await response.json();
+        const endpoints = cfg.endpoints || {};
+        state.config.authRequired = Boolean(cfg.auth_required);
+        state.config.endpoints = {
+          health: endpoints.health || "/health",
+          reset: endpoints.reset || "/reset",
+          step: endpoints.step || "/step",
+          agent_action: endpoints.agent_action || "/fraud_hunter/agent_action",
+          agent_action_online: endpoints.agent_action_online || "/fraud_hunter/agent_action_online",
+          upload_dataset: endpoints.upload_dataset || "/fraud_hunter/upload_dataset",
+          online_rl_update: endpoints.online_rl_update || "/fraud_hunter/online_rl/update",
+          online_rl_state: endpoints.online_rl_state || "/fraud_hunter/online_rl/state",
+          online_rl_reset: endpoints.online_rl_reset || "/fraud_hunter/online_rl/reset",
+          metrics: endpoints.metrics || "/metrics",
+        };
+        state.config.agent = {
+          enabled: Boolean((cfg.agent || {}).enabled),
+          model: String((cfg.agent || {}).model || ""),
+        };
+        state.config.onlineRl = {
+          enabled: Boolean((cfg.online_rl || {}).enabled),
+        };
+        state.config.upload = {
+          enabled: Boolean((cfg.upload || {}).enabled),
+          maxBytes: Number((cfg.upload || {}).max_bytes || 0),
+        };
+        if ((cfg.agent || {}).base_url) {
+          nodes.llmBaseUrlInput.value = String((cfg.agent || {}).base_url || "");
+        }
+        if ((cfg.agent || {}).model) {
+          nodes.llmModelInput.value = String((cfg.agent || {}).model || "");
+        }
+
+        if (state.config.authRequired) {
+          setAuthNote("Backend requires X-API-Key for reset/step/state. Enter the key above before starting.", "warn");
+        } else if (state.config.onlineRl.enabled) {
+          setAuthNote("Online RL is enabled. Auto Step will update policy weights in real time after every reward.", "info");
+        } else if (state.config.agent.enabled) {
+          const model = state.config.agent.model || "configured model";
+          setAuthNote(`Realtime agent serving enabled (${model}). Use Auto Step (LLM).`, "info");
+        } else {
+          setAuthNote("Backend config loaded. Auth is disabled; requests will run without an API key. Fill LLM Base URL + Model to activate Auto Step.", "warn");
+        }
+      } catch (err) {
+        setAuthNote("Could not load /ui/config. Using default route wiring (/reset, /step, /metrics).", "warn");
+        appendTraceItem({
+          title: "Dashboard config",
+          status: "warning",
+          error: (err && err.message) ? err.message : "Unknown config loading error",
         });
+      }
+    }
 
-        // ── Tier Chart ────────────────────────────────────────────────────────
-        const tierCtx = document.getElementById('tierChart').getContext('2d');
-        const tierChart = new Chart(tierCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Difficulty Tier',
-                    data: [],
-                    borderColor: '#06b6d4',
-                    backgroundColor: 'rgba(6,182,212,0.1)',
-                    fill: true,
-                    stepped: 'after',
-                    borderWidth: 2,
-                    pointRadius: 3,
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {
-                    y: { min: 0, max: 6, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { stepSize: 1, color: '#64748b' } },
-                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } }
-                },
-                plugins: { legend: { display: false } }
-            }
+    function renderUploadResult(payload) {
+      const extracted = Array.isArray(payload.extracted_files) ? payload.extracted_files : [];
+      const maxMb = state.config.upload.maxBytes > 0 ? (state.config.upload.maxBytes / (1024 * 1024)).toFixed(1) : "-";
+      nodes.uploadStatus.textContent = `Uploaded ${payload.dataset} (${payload.bytes} bytes). Extracted files: ${payload.extracted_count}. Max upload: ${maxMb} MB.`;
+      if (extracted.length === 0) {
+        nodes.uploadFilesList.style.display = "none";
+        nodes.uploadFilesList.innerHTML = "";
+        return;
+      }
+      nodes.uploadFilesList.innerHTML = extracted.slice(0, 40).map((name) => (
+        `<li class="mono">${escapeHtml(String(name))}</li>`
+      )).join("");
+      nodes.uploadFilesList.style.display = "grid";
+    }
+
+    async function uploadDataset() {
+      if (!state.config.upload.enabled) {
+        appendTraceItem({
+          title: "Dataset upload",
+          status: "error",
+          error: "Dataset upload is disabled on backend.",
         });
+        return;
+      }
 
-        // ── Error Chart ───────────────────────────────────────────────────────
-        const errorCtx = document.getElementById('errorChart').getContext('2d');
-        const errorChart = new Chart(errorCtx, {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    data: [],
-                    backgroundColor: 'rgba(239,68,68,0.4)',
-                    borderColor: '#ef4444',
-                    borderWidth: 1,
-                    borderRadius: 4,
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: {
-                    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b' } },
-                    x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 9 } } }
-                },
-                plugins: { legend: { display: false } }
-            }
+      const input = nodes.datasetFileInput;
+      if (!input.files || input.files.length === 0) {
+        appendTraceItem({
+          title: "Dataset upload",
+          status: "error",
+          error: "Choose a .csv or .zip file first.",
         });
+        return;
+      }
 
-        // ── Tier Bar ──────────────────────────────────────────────────────────
-        function renderTierBar(active) {
-            const colors = ['#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ef4444'];
-            const labels = ['T1 Easy', 'T2 Med', 'T3 Hard', 'T4 Expert', 'T5 Elite'];
-            const bar = document.getElementById('tierBar');
-            bar.innerHTML = labels.map((l, i) =>
-                `<div class="segment ${i + 1 === active ? 'active' : ''}"
-                      style="background:${i + 1 === active ? colors[i] : 'rgba(255,255,255,0.05)'};
-                             color:${i + 1 === active ? '#fff' : '#64748b'}">${l}</div>`
-            ).join('');
-        }
+      const file = input.files[0];
+      const form = new FormData();
+      form.append("file", file);
+      const datasetName = (nodes.datasetNameInput.value || "").trim();
+      if (datasetName) form.append("dataset_name", datasetName);
+      form.append("extract_zip", nodes.extractZipInput.checked ? "true" : "false");
 
-        // ── Per-Policy Bars (from /assets/eval_results.json) ─────────────────
-        async function renderPolicyBars() {
-            const container = document.getElementById('policyBars');
-            try {
-                const r = await fetch('/assets/eval_results.json', { cache: 'no-store' });
-                if (!r.ok) throw new Error('eval_results.json not found');
-                const data = await r.json();
-                // data shape: { policy_name: { episode_reward: [...], agentic_recall: [...], cot_validity_score: [...] } }
-                const policies = Object.keys(data);
-                if (!policies.length) throw new Error('empty');
-                const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b'];
-                const metrics = ['episode_reward', 'agentic_recall', 'cot_validity_score'];
-                const rows = [];
-                metrics.forEach((m, mi) => {
-                    rows.push(`<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">${m.replace(/_/g, ' ')}</div>`);
-                    policies.forEach((p, pi) => {
-                        const arr = (data[p] && data[p][m]) || [];
-                        const mean = arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-                        const isPct = m !== 'episode_reward';
-                        const display = isPct ? (mean * 100).toFixed(0) + '%' : mean.toFixed(1);
-                        // Bar width: clamp negative rewards to 0; map [0,1] for ratios
-                        const barPct = isPct ? Math.min(100, Math.max(0, mean * 100)) :
-                            Math.min(100, Math.max(0, (mean + 100) / 2));
-                        rows.push(`<div class="typology-row">
-                            <div class="name">${p}</div>
-                            <div class="bar-bg"><div class="bar-fill" style="width:${barPct}%;background:${colors[pi % colors.length]}"></div></div>
-                            <div class="val">${display}</div>
-                        </div>`);
-                    });
-                });
-                container.innerHTML = rows.join('');
-            } catch (e) {
-                container.innerHTML = `<div class="empty-state">Run <code>python eval.py --episodes 30</code> to populate.</div>`;
-            }
-        }
-
-        // ── Random vs Trained Compare Table (from /assets/eval_results.json) ─
-        async function renderCompareTable() {
-            const body = document.getElementById('compareBody');
-            try {
-                const r = await fetch('/assets/eval_results.json', { cache: 'no-store' });
-                if (!r.ok) throw new Error();
-                const data = await r.json();
-                const baseline = data.random_policy || data.random || null;
-                const trained = data.trained_policy || data.scripted_expert_policy || data.scripted_expert || null;
-                if (!baseline || !trained) throw new Error();
-                const metrics = [
-                    { key: 'episode_reward', label: 'Avg Episode Reward', fmt: v => v.toFixed(1) },
-                    { key: 'agentic_recall', label: 'Agentic Recall', fmt: v => (v * 100).toFixed(0) + '%' },
-                    { key: 'cot_validity_score', label: 'CoT Validity', fmt: v => (v * 100).toFixed(0) + '%' },
-                    { key: 'format_error_count', label: 'Format Errors / ep', fmt: v => v.toFixed(1) },
-                    { key: 'proof_chain_length', label: 'Proof Chain Length', fmt: v => v.toFixed(1) },
-                ];
-                const meanOf = (arr) => (arr && arr.length) ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-                body.innerHTML = metrics.map(({ key, label, fmt }) => {
-                    const before = meanOf(baseline[key]);
-                    const after = meanOf(trained[key]);
-                    const delta = after - before;
-                    const cls = delta > 0 ? 'delta-positive' : delta < 0 ? 'delta-negative' : '';
-                    const sign = delta > 0 ? '+' : '';
-                    return `<tr>
-                        <td>${label}</td>
-                        <td>${fmt(before)}</td>
-                        <td style="font-weight:600">${fmt(after)}</td>
-                        <td class="${cls}">${sign}${fmt(delta)}</td>
-                    </tr>`;
-                }).join('');
-            } catch (e) {
-                body.innerHTML = '<tr><td colspan="4" class="empty-state">Run <code>python eval.py --episodes 30</code> to populate.</td></tr>';
-            }
-        }
-
-        // ── Init ──────────────────────────────────────────────────────────────
-        renderTierBar(1);
-        renderPolicyBars();
-        renderCompareTable();
-
-        // ── Live metrics: real SSE only — no fake fallback ────────────────────
-        function applyMetrics(m) {
-            episode++;
-            const tier = m.difficulty_tier ?? 1;
-            const reward = m.episode_reward ?? 0;
-            const errors = m.format_error_count ?? 0;
-            const recallPct = Math.round((m.agentic_recall ?? 0) * 100);
-            const cotPct = Math.round((m.cot_validity_score ?? 0) * 100);
-            const chains = m.proof_chain_length ?? 0;
-
-            rewardHistory.push(reward);
-            tierHistory.push(tier);
-            errorHistory.push(errors);
-
-            rewardChart.data.labels.push(episode);
-            rewardChart.data.datasets[0].data.push(reward);
-            const rollingAvg = rewardHistory.slice(-20).reduce((a, b) => a + b, 0)
-                                / Math.min(20, rewardHistory.length);
-            rewardChart.data.datasets[1].data.push(rollingAvg);
-            rewardChart.update('none');
-
-            tierChart.data.labels.push(episode);
-            tierChart.data.datasets[0].data.push(tier);
-            tierChart.update('none');
-
-            errorChart.data.labels.push(episode);
-            errorChart.data.datasets[0].data.push(errors);
-            errorChart.update('none');
-
-            document.getElementById('kpi-tier').textContent = tier;
-            document.getElementById('kpi-reward').textContent = rollingAvg.toFixed(1);
-            document.getElementById('kpi-recall').textContent = recallPct + '%';
-            document.getElementById('kpi-cot').textContent = cotPct + '%';
-            document.getElementById('kpi-errors').textContent = errors;
-            document.getElementById('kpi-chains').textContent = chains;
-
-            renderTierBar(tier);
-
-            // Format error rate from cumulative errors / cumulative episodes
-            const errRate = errorHistory.length > 0
-                ? (errorHistory.filter(x => x > 0).length / errorHistory.length * 100).toFixed(1)
-                : '0.0';
-            document.getElementById('errorGauge').textContent = errRate + '%';
-
-            // Latest-episode raw dump
-            const latest = document.getElementById('latestEpisode');
-            latest.classList.remove('empty-state');
-            latest.textContent = JSON.stringify(m, null, 2);
-
-            // Connection healthy → hide banner
-            document.getElementById('disconnectBanner').classList.remove('active');
-        }
-
-        function showDisconnected() {
-            document.getElementById('disconnectBanner').classList.add('active');
-            const dot = document.querySelector('.badge .dot');
-            const badge = document.querySelector('.badge');
-            if (dot) dot.style.background = 'var(--accent-red)';
-            if (badge) {
-                badge.style.color = 'var(--accent-red)';
-                badge.style.borderColor = 'rgba(239,68,68,0.3)';
-                badge.style.background = 'rgba(239,68,68,0.1)';
-                badge.lastChild.textContent = ' Disconnected';
-            }
-        }
-
-        // ── Bootstrap from /metrics/history on page load ──────────────────────
-        // This ensures the dashboard shows the last N episodes from the bus
-        // even when no live client is currently connected. Live SSE then
-        // appends new episodes as they arrive.
-        async function bootstrapHistory() {
-            try {
-                const r = await fetch('/metrics/history?limit=100', { cache: 'no-store' });
-                if (!r.ok) return;
-                const history = await r.json();
-                if (!Array.isArray(history) || history.length === 0) return;
-                history.forEach(applyMetrics);
-            } catch (_) { /* server not reachable; SSE handler will show banner */ }
-        }
-        bootstrapHistory();
-
-        // ── Live SSE — appends new episodes as they happen ────────────────────
-        let evtSource = null;
+      try {
+        const response = await fetch(state.config.endpoints.upload_dataset, {
+          method: "POST",
+          headers: buildAuthHeaders(),
+          body: form,
+        });
+        const text = await response.text();
+        let body = {};
         try {
-            evtSource = new EventSource('/metrics');
-            evtSource.onmessage = (e) => {
-                try { applyMetrics(JSON.parse(e.data)); }
-                catch (_) { /* ignore malformed frames */ }
-            };
-            evtSource.onerror = () => {
-                evtSource.close();
-                showDisconnected();
-            };
-        } catch (_) {
-            showDisconnected();
+          body = text ? JSON.parse(text) : {};
+        } catch {
+          body = { raw: text };
         }
-    </script>
+
+        if (!response.ok) {
+          throw new Error((body && body.detail) ? body.detail : `HTTP ${response.status}`);
+        }
+
+        renderUploadResult(body || {});
+        appendTraceItem({
+          title: "Dataset upload",
+          status: "ok",
+          toolOutput: `Uploaded ${String((body || {}).stored_file || file.name)} successfully.`,
+          feedback: `dataset=${String((body || {}).dataset || "-")} extracted=${String((body || {}).extracted_count || 0)}`,
+        });
+      } catch (err) {
+        appendTraceItem({
+          title: "Dataset upload",
+          status: "error",
+          error: (err && err.message) ? err.message : "Dataset upload failed",
+        });
+      }
+    }
+
+    function renderOnlineRlState(snapshot, enabled = true) {
+      if (!snapshot || typeof snapshot !== "object") {
+        nodes.onlineRlGrid.style.display = "none";
+        nodes.onlineRlGrid.innerHTML = "";
+        nodes.onlineRlPlaceholder.textContent = "Online RL state unavailable.";
+        nodes.onlineRlPlaceholder.style.display = "block";
+        return;
+      }
+
+      const counts = snapshot.selection_count || {};
+      const countText = Object.keys(counts).length
+        ? Object.entries(counts).map(([k, v]) => `${k}:${v}`).join(" | ")
+        : "-";
+      const rows = [
+        ["Enabled", String(Boolean(enabled))],
+        ["Updates", String(snapshot.updates ?? "0")],
+        ["Baseline", Number(snapshot.baseline ?? 0).toFixed(3)],
+        ["Learning Rate", String(snapshot.learning_rate ?? "-")],
+        ["Temperature", String(snapshot.temperature ?? "-")],
+        ["Pending Decisions", String(snapshot.pending_decisions ?? "0")],
+        ["Arms", Array.isArray(snapshot.arms) ? snapshot.arms.join(", ") : "-"],
+        ["Selection Count", countText],
+      ];
+
+      nodes.onlineRlGrid.innerHTML = rows.map(([k, v]) => (
+        `<li><span class="key">${escapeHtml(String(k))}</span><span class="mono">${escapeHtml(String(v))}</span></li>`
+      )).join("");
+      nodes.onlineRlGrid.style.display = "grid";
+      nodes.onlineRlPlaceholder.style.display = "none";
+    }
+
+    async function fetchOnlineRlState() {
+      try {
+        const response = await fetch(state.config.endpoints.online_rl_state, {
+          headers: buildHeaders(),
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        renderOnlineRlState(payload.state || {}, Boolean(payload.enabled));
+      } catch (err) {
+        renderOnlineRlState(null, false);
+        appendTraceItem({
+          title: "Online RL state",
+          status: "warning",
+          error: (err && err.message) ? err.message : "Failed to fetch online RL state",
+        });
+      }
+    }
+
+    function startOnlineRlPolling() {
+      if (state.onlineRlPollTimer) {
+        clearInterval(state.onlineRlPollTimer);
+      }
+      state.onlineRlPollTimer = setInterval(() => {
+        fetchOnlineRlState();
+      }, 5000);
+    }
+
+    async function postJson(path, payload) {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      const text = await response.text();
+      let body = null;
+      if (text) {
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = { raw: text };
+        }
+      }
+
+      if (!response.ok) {
+        const detail = (body && body.detail) ? body.detail : `HTTP ${response.status}`;
+        const error = new Error(detail);
+        error.status = response.status;
+        error.payload = body;
+        throw error;
+      }
+
+      return body;
+    }
+
+    function setBusy(flag) {
+      state.requestBusy = flag;
+      nodes.resetBtn.disabled = flag;
+      nodes.submitStepBtn.disabled = flag || !state.episodeActive;
+      nodes.autoStepBtn.disabled = flag || !state.episodeActive;
+      nodes.loadSchemaBtn.disabled = flag || !state.episodeActive;
+    }
+
+    function shortHash(value) {
+      if (!value || typeof value !== "string") return "-";
+      if (value.length <= 14) return value;
+      return `${value.slice(0, 7)}…${value.slice(-7)}`;
+    }
+
+    function setKpisFromObservation(payload) {
+      if (!payload || !payload.observation) return;
+      const obs = payload.observation;
+      state.latestObservation = obs;
+      const info = obs.info || {};
+      state.latestInfo = info;
+
+      const rewardValue = (payload.reward ?? obs.reward ?? info.episode_reward);
+      if (rewardValue !== undefined && rewardValue !== null) {
+        const numeric = Number(rewardValue);
+        nodes.kpiReward.textContent = Number.isFinite(numeric) ? numeric.toFixed(2) : "-";
+      }
+
+      nodes.kpiStep.textContent = Number.isFinite(obs.step_count) ? String(obs.step_count) : "-";
+      nodes.kpiTier.textContent = Number.isFinite(obs.difficulty_tier) ? String(obs.difficulty_tier) : "-";
+      nodes.kpiReplay.textContent = shortHash(info.replay_hash);
+
+      renderMetadata(obs, info);
+    }
+
+    function setKpisFromMetrics(metrics) {
+      if (!metrics || typeof metrics !== "object") return;
+      if (Number.isFinite(metrics.episode_reward)) {
+        nodes.kpiReward.textContent = Number(metrics.episode_reward).toFixed(2);
+      }
+      if (Number.isFinite(metrics.difficulty_tier)) {
+        nodes.kpiTier.textContent = String(metrics.difficulty_tier);
+      }
+    }
+
+    function renderMetadata(obs, info) {
+      const rows = [
+        ["Case ID", info.case_id || "-"],
+        ["Budget Remaining", Number.isFinite(obs.budget_remaining) ? obs.budget_remaining : "-"],
+        ["Done", String(Boolean(obs.done))],
+        ["Format Errors", Number.isFinite(info.format_error_count) ? info.format_error_count : "-"],
+        ["Agentic Recall", Number.isFinite(info.agentic_recall) ? info.agentic_recall : "-"],
+        ["CoT Validity", Number.isFinite(info.cot_validity_score) ? info.cot_validity_score : "-"],
+        ["Replay Hash", info.replay_hash || "-"],
+        ["Prev Replay Hash", info.replay_prev_hash || "-"],
+      ];
+
+      nodes.metaGrid.innerHTML = rows.map(([k, v]) => (
+        `<li><span class="key">${escapeHtml(String(k))}</span><span class="mono">${escapeHtml(String(v))}</span></li>`
+      )).join("");
+      nodes.metaGrid.style.display = "grid";
+      nodes.metaPlaceholder.style.display = "none";
+    }
+
+    function parseThinkTrace(action) {
+      if (!action || typeof action !== "object") return "";
+      const raw = action.think_trace;
+      if (!raw || typeof raw !== "string") return "";
+      const match = raw.match(/<think>([\s\S]*?)<\/think>/i);
+      return (match ? match[1] : raw).trim();
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function removeTraceEmpty() {
+      const empty = nodes.traceFeed.querySelector(".trace-empty");
+      if (empty) empty.remove();
+    }
+
+    function nowClock() {
+      return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+
+    function appendTraceItem({
+      title,
+      status,
+      action,
+      think,
+      toolOutput,
+      feedback,
+      reward,
+      done,
+      error,
+      pending,
+    }) {
+      removeTraceEmpty();
+      state.traceCount += 1;
+
+      const wrapper = document.createElement("article");
+      wrapper.className = "trace-item";
+      wrapper.dataset.traceIndex = String(state.traceCount);
+
+      const pillClass = status === "error" ? "err" : status === "warning" ? "warn" : "ok";
+      const pillText = status === "error" ? "Execution Error" : status === "warning" ? "Pending" : "OK";
+
+      wrapper.innerHTML = `
+        <div class="trace-top">
+          <div class="trace-title">#${state.traceCount} ${escapeHtml(title)}</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="mono">${escapeHtml(nowClock())}</span>
+            <span class="pill ${pillClass}">${pillText}</span>
+          </div>
+        </div>
+        <div class="trace-body">
+          ${pending ? '<div class="typing"><span class="pulse-dot"></span>Waiting for /step response…</div>' : ""}
+          ${action ? `<div><div class="kv"><strong>Action</strong></div><pre class="codeblock mono">${escapeHtml(JSON.stringify(action, null, 2))}</pre></div>` : ""}
+          ${think ? `<details class="think"><summary>Reasoning &lt;think&gt;</summary><pre class="codeblock mono" style="margin-top:7px; background:#fff;">${escapeHtml(think)}</pre></details>` : ""}
+          ${toolOutput ? `<div><div class="kv"><strong>Observation</strong></div><pre class="codeblock mono">${escapeHtml(toolOutput)}</pre></div>` : ""}
+          ${feedback ? `<div><div class="kv"><strong>Grader</strong></div><pre class="codeblock">${escapeHtml(feedback)}</pre></div>` : ""}
+          ${reward !== undefined ? `<div class="kv"><strong>Reward</strong><span class="mono">${escapeHtml(String(reward))}</span></div>` : ""}
+          ${done !== undefined ? `<div class="kv"><strong>Done</strong><span class="mono">${escapeHtml(String(done))}</span></div>` : ""}
+          ${error ? `<div><div class="kv"><strong>Error</strong></div><pre class="codeblock" style="background:var(--err-soft); border-color:#efcccc; color:#7b1d1d;">${escapeHtml(error)}</pre></div>` : ""}
+        </div>
+      `;
+
+      nodes.traceFeed.appendChild(wrapper);
+      nodes.traceFeed.scrollTop = nodes.traceFeed.scrollHeight;
+      return wrapper;
+    }
+
+    function replacePendingTrace(node, resolved) {
+      if (!node || !node.parentElement) return appendTraceItem(resolved);
+      const replacement = appendTraceItem(resolved);
+      node.remove();
+      return replacement;
+    }
+
+    function extractSchemaFromOutput(output) {
+      if (!output || typeof output !== "string") return [];
+      const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (lines.length === 0) return [];
+      const tables = [];
+      for (let i = 1; i < lines.length; i += 1) {
+        const value = lines[i].split("\t")[0];
+        if (value) tables.push(value);
+      }
+      return tables;
+    }
+
+    function renderSchema(tables) {
+      if (!Array.isArray(tables) || tables.length === 0) {
+        nodes.schemaList.style.display = "none";
+        nodes.schemaList.innerHTML = "";
+        nodes.schemaPlaceholder.textContent = "No table names returned by the SQL schema probe.";
+        nodes.schemaPlaceholder.style.display = "block";
+        return;
+      }
+      const unique = [...new Set(tables)];
+      nodes.schemaList.innerHTML = unique
+        .map((table) => `<li class="mono">${escapeHtml(table)}</li>`)
+        .join("");
+      nodes.schemaList.style.display = "grid";
+      nodes.schemaPlaceholder.style.display = "none";
+    }
+
+    async function doReset() {
+      if (state.requestBusy) return;
+      setBusy(true);
+      try {
+        const payload = await postJson(state.config.endpoints.reset, {});
+        const obs = payload && payload.observation ? payload.observation : null;
+        const caseBrief = obs && obs.case_brief ? obs.case_brief : "No case brief returned by /reset.";
+        nodes.caseBrief.textContent = caseBrief;
+        state.episodeActive = true;
+        setKpisFromObservation(payload);
+
+        appendTraceItem({
+          title: "Episode reset",
+          status: "ok",
+          toolOutput: `Episode initialized through POST ${state.config.endpoints.reset}.`,
+          feedback: obs && obs.info ? `case_id: ${obs.info.case_id || "unknown"}` : "case_id unavailable",
+          reward: payload.reward,
+          done: payload.done,
+        });
+      } catch (err) {
+        appendTraceItem({
+          title: "Episode reset",
+          status: "error",
+          error: (err && err.message) ? err.message : "Unknown reset error",
+        });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function runStep(action, titleSuffix = "Action step") {
+      if (state.requestBusy) return null;
+      if (!state.episodeActive) {
+        appendTraceItem({
+          title: "Execution blocked",
+          status: "error",
+          error: "Start an investigation first. /step requires an active episode.",
+        });
+        return null;
+      }
+
+      setBusy(true);
+      const pending = appendTraceItem({
+        title: titleSuffix,
+        status: "warning",
+        action,
+        pending: true,
+      });
+
+      try {
+        const payload = await postJson(state.config.endpoints.step, { action });
+        const obs = payload.observation || {};
+
+        replacePendingTrace(pending, {
+          title: titleSuffix,
+          status: "ok",
+          action,
+          think: parseThinkTrace(action),
+          toolOutput: obs.tool_output || "No tool output.",
+          feedback: obs.grader_feedback || "No grader feedback.",
+          reward: payload.reward,
+          done: payload.done,
+        });
+
+        setKpisFromObservation(payload);
+        if (payload.done) {
+          state.episodeActive = false;
+          appendTraceItem({
+            title: "Episode finished",
+            status: "ok",
+            toolOutput: "Terminal step reached. Press Start Investigation for a new episode.",
+            reward: payload.reward,
+            done: payload.done,
+          });
+        }
+
+        return payload;
+      } catch (err) {
+        const status = Number(err && err.status);
+        const fullError = status === 422
+          ? `HTTP 422 validation error: ${(err && err.message) ? err.message : "Invalid action schema"}`
+          : (err && err.message) ? err.message : "Unknown /step error";
+
+        replacePendingTrace(pending, {
+          title: titleSuffix,
+          status: "error",
+          action,
+          think: parseThinkTrace(action),
+          error: fullError,
+        });
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function autoStepWithAgent() {
+      if (!state.latestObservation) {
+        appendTraceItem({
+          title: "Agent serving",
+          status: "error",
+          error: "No observation available yet. Start an investigation first.",
+        });
+        return;
+      }
+
+      const objective = (nodes.agentObjectiveInput.value || "").trim()
+        || "Investigate efficiently and maximize evidence-backed reward.";
+      const userMessage = (nodes.userMessageInput.value || "").trim();
+      const llm = {
+        enabled: true,
+        base_url: (nodes.llmBaseUrlInput.value || "").trim(),
+        model: (nodes.llmModelInput.value || "").trim(),
+        api_key: (nodes.llmApiKeyInput.value || "").trim(),
+      };
+      if (!llm.base_url || !llm.model) {
+        appendTraceItem({
+          title: "Agent generation",
+          status: state.config.onlineRl.enabled ? "warning" : "error",
+          error: state.config.onlineRl.enabled
+            ? "LLM config missing: online RL will continue with heuristic action arms."
+            : "Fill LLM Base URL and LLM Model first.",
+        });
+        if (!state.config.onlineRl.enabled) return;
+      }
+
+      let generated;
+      try {
+        const targetEndpoint = state.config.onlineRl.enabled
+          ? state.config.endpoints.agent_action_online
+          : state.config.endpoints.agent_action;
+        generated = await postJson(targetEndpoint, {
+          observation: state.latestObservation,
+          objective,
+          user_message: userMessage,
+          llm,
+        });
+      } catch (err) {
+        appendTraceItem({
+          title: "Agent generation",
+          status: "error",
+          error: (err && err.message) ? err.message : "Agent generation failed",
+        });
+        return;
+      }
+
+      const action = generated && generated.action;
+      if (!action || typeof action !== "object") {
+        appendTraceItem({
+          title: "Agent generation",
+          status: "error",
+          error: "Backend did not return a valid action object.",
+        });
+        return;
+      }
+
+      state.lastDecisionToken = String(generated.decision_token || "");
+      state.lastDecisionArm = String(generated.arm || "");
+
+      nodes.actionInput.value = JSON.stringify(action, null, 2);
+      const modelName = generated.model ? ` via ${generated.model}` : "";
+      const armLabel = state.lastDecisionArm ? ` [arm:${state.lastDecisionArm}]` : "";
+      const stepPayload = await runStep(action, `Agent Auto Step${modelName}${armLabel}`);
+
+      if (state.config.onlineRl.enabled && state.lastDecisionToken && stepPayload && Number.isFinite(stepPayload.reward)) {
+        try {
+          const update = await postJson(state.config.endpoints.online_rl_update, {
+            decision_token: state.lastDecisionToken,
+            reward: Number(stepPayload.reward),
+          });
+          appendTraceItem({
+            title: "Online RL weight update",
+            status: "ok",
+            toolOutput: `Decision ${state.lastDecisionArm || "unknown"} updated with reward ${Number(stepPayload.reward).toFixed(3)}.`,
+            feedback: `baseline=${Number(((update || {}).baseline ?? 0)).toFixed(3)} updates=${(update || {}).updates ?? "?"}`,
+          });
+          renderOnlineRlState((update || {}).online_rl || {}, true);
+        } catch (err) {
+          appendTraceItem({
+            title: "Online RL weight update",
+            status: "error",
+            error: (err && err.message) ? err.message : "Failed to update online policy weights",
+          });
+        }
+      }
+    }
+
+    function connectMetricsSse() {
+      if (state.metricsSource) {
+        state.metricsSource.close();
+      }
+
+      const source = new EventSource(state.config.endpoints.metrics);
+      state.metricsSource = source;
+
+      source.onopen = () => {
+        state.metricsConnected = true;
+        nodes.streamStatus.className = "stream-status live";
+        nodes.streamStatusText.textContent = "Metrics stream connected";
+      };
+
+      source.onmessage = (event) => {
+        try {
+          const metrics = JSON.parse(event.data);
+          setKpisFromMetrics(metrics);
+        } catch {
+          appendTraceItem({
+            title: "Metrics parse warning",
+            status: "warning",
+            error: `Received malformed metrics frame from ${state.config.endpoints.metrics}.`,
+          });
+        }
+      };
+
+      source.onerror = () => {
+        state.metricsConnected = false;
+        nodes.streamStatus.className = "stream-status down";
+        nodes.streamStatusText.textContent = "Metrics stream disconnected";
+      };
+    }
+
+    async function pingHealth() {
+      try {
+        const response = await fetch(state.config.endpoints.health, {
+          headers: buildHeaders(),
+          cache: "no-store",
+        });
+        const text = await response.text();
+        appendTraceItem({
+          title: "Health check",
+          status: response.ok ? "ok" : "error",
+          toolOutput: `GET ${state.config.endpoints.health} -> HTTP ${response.status}`,
+          feedback: text || "No payload",
+        });
+      } catch (err) {
+        appendTraceItem({
+          title: "Health check",
+          status: "error",
+          error: (err && err.message) ? err.message : "Health check failed",
+        });
+      }
+    }
+
+    nodes.resetBtn.addEventListener("click", () => {
+      doReset();
+    });
+
+    nodes.submitStepBtn.addEventListener("click", async () => {
+      let action;
+      try {
+        action = JSON.parse(nodes.actionInput.value || "{}");
+      } catch {
+        appendTraceItem({
+          title: "Action parsing",
+          status: "error",
+          error: "Action payload is not valid JSON.",
+        });
+        return;
+      }
+      await runStep(action, `Step ${state.traceCount + 1}`);
+    });
+
+    nodes.autoStepBtn.addEventListener("click", async () => {
+      await autoStepWithAgent();
+    });
+
+    nodes.uploadDatasetBtn.addEventListener("click", async () => {
+      await uploadDataset();
+    });
+
+    nodes.loadSchemaBtn.addEventListener("click", async () => {
+      const action = {
+        kind: "sql_query",
+        sql_statement: "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+        think_trace: "<think>List all available SQLite tables to ground investigation context.</think>",
+      };
+      const payload = await runStep(action, "Schema probe");
+      if (!payload || !payload.observation) return;
+      const tables = extractSchemaFromOutput(payload.observation.tool_output || "");
+      renderSchema(tables);
+    });
+
+    nodes.pingHealthBtn.addEventListener("click", () => {
+      pingHealth();
+    });
+
+    nodes.refreshOnlineRlBtn.addEventListener("click", async () => {
+      await fetchOnlineRlState();
+    });
+
+    nodes.resetOnlineRlBtn.addEventListener("click", async () => {
+      try {
+        const payload = await postJson(state.config.endpoints.online_rl_reset, {});
+        renderOnlineRlState((payload || {}).state || {}, true);
+        appendTraceItem({
+          title: "Online RL reset",
+          status: "ok",
+          toolOutput: "Online RL weights reset to initial values.",
+        });
+      } catch (err) {
+        appendTraceItem({
+          title: "Online RL reset",
+          status: "error",
+          error: (err && err.message) ? err.message : "Failed to reset online RL state",
+        });
+      }
+    });
+
+    nodes.clearTraceBtn.addEventListener("click", () => {
+      nodes.traceFeed.innerHTML = '<p class="trace-empty">Trace cleared. New events will appear from real backend interactions.</p>';
+      state.traceCount = 0;
+    });
+
+    nodes.templateBtn.addEventListener("click", () => {
+      nodes.actionInput.value = JSON.stringify({
+        kind: "sql_query",
+        sql_statement: "SELECT * FROM beneficiary_summary LIMIT 5",
+        think_trace: "<think>Inspect a small beneficiary sample before linking evidence.</think>",
+      }, null, 2);
+    });
+
+    (async () => {
+      await loadDashboardConfig();
+      setBusy(false);
+      await fetchOnlineRlState();
+      startOnlineRlPolling();
+      connectMetricsSse();
+    })();
+  </script>
 </body>
 </html>

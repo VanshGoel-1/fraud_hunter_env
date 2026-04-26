@@ -16,6 +16,8 @@ to enable the agent to reason over its own prior discoveries.
 from __future__ import annotations
 
 import gc
+import hashlib
+import json
 import random
 import re
 import shutil
@@ -156,8 +158,56 @@ class FraudHunterEnvironment(Environment):
         self._episode_reward: float = 0.0
         self._difficulty_tier: int = 1
         self._session_id: str = str(uuid4())
+        self._replay_prev_hash: str | None = None
+        self._replay_hash: str | None = None
 
         self._diff_mgr = get_difficulty_manager()
+
+    @staticmethod
+    def _hash_payload(payload: dict[str, Any]) -> str:
+        blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+    def _update_replay_hash(
+        self,
+        phase: str,
+        action: FraudHunterAction | None = None,
+        reward: float | None = None,
+        done: bool | None = None,
+    ) -> str:
+        payload: dict[str, Any] = {
+            "phase": phase,
+            "session_id": self._session_id,
+            "episode_id": self._state.episode_id,
+            "step_count": self._state.step_count,
+            "case_id": self._case.case_id if self._case is not None else None,
+            "difficulty_tier": self._difficulty_tier,
+            "seed_range": self._case_seed_range,
+            "queried_tables": sorted(self._queried_tables),
+            "entities": sorted(self._extracted),
+            "links": sorted([list(x) for x in self._linked]),
+            "contradictions": sorted([list(x) for x in self._contradictions]),
+            "proof_trace": list(self._proof_trace),
+            "episode_reward": round(self._episode_reward, 6),
+            "previous_hash": self._replay_hash,
+        }
+        if action is not None:
+            payload["action"] = action.model_dump(exclude_none=True, mode="json")
+        if reward is not None:
+            payload["reward"] = round(float(reward), 6)
+        if done is not None:
+            payload["done"] = bool(done)
+
+        self._replay_prev_hash = self._replay_hash
+        self._replay_hash = self._hash_payload(payload)
+        return self._replay_hash
+
+    def _replay_info(self) -> dict[str, Any]:
+        return {
+            "replay_hash": self._replay_hash,
+            "replay_prev_hash": self._replay_prev_hash,
+            "replay_hash_alg": "sha256",
+        }
 
     def _record_source_access(self, source: str) -> None:
         value = (source or "").strip().lower().replace("\\", "/")
@@ -274,12 +324,15 @@ class FraudHunterEnvironment(Environment):
         self._format_errors = 0
         self._hallucination_count = 0
         self._episode_reward = 0.0
+        self._replay_prev_hash = None
+        self._replay_hash = None
 
         brief = CASE_BRIEF_TEMPLATE.format(
             case_id=self._case.case_id,
             budget=MAX_EPISODE_STEPS,
             tier=self._difficulty_tier,
         )
+        self._update_replay_hash(phase="reset")
         return FraudHunterObservation(
             case_brief=brief,
             base64_document=None,
@@ -288,7 +341,7 @@ class FraudHunterEnvironment(Environment):
             difficulty_tier=self._difficulty_tier,
             done=False,
             reward=0.0,
-            info={"case_id": self._case.case_id, **self._build_metrics()},
+            info={"case_id": self._case.case_id, **self._build_metrics(), **self._replay_info()},
         )
 
     def step(self, action: FraudHunterAction) -> FraudHunterObservation:  # type: ignore[override]
@@ -353,6 +406,12 @@ class FraudHunterEnvironment(Environment):
 
         budget_remaining = max(0, MAX_EPISODE_STEPS - self._state.step_count)
         done = out.done or budget_remaining == 0
+        self._update_replay_hash(
+            phase="step",
+            action=action,
+            reward=out.reward,
+            done=done,
+        )
 
         # Fire metrics callback on terminal step (before next reset would clobber state)
         if done and self._on_episode_end is not None:
@@ -361,6 +420,7 @@ class FraudHunterEnvironment(Environment):
                     "case_id": self._case.case_id,
                     "session_id": self._session_id,
                     **self._build_metrics(),
+                    **self._replay_info(),
                 })
             except Exception:
                 # Never let a metrics emit break the agent loop.
@@ -380,6 +440,7 @@ class FraudHunterEnvironment(Environment):
                 "hits": out.hits,
                 "case_id": self._case.case_id,
                 **self._build_metrics(),
+                **self._replay_info(),
             },
         )
 

@@ -4,6 +4,8 @@ FastAPI application for the Fraud Hunter Environment.
 Routes:
   /ws               — OpenEnv WebSocket protocol (authoritative on HF Spaces)
   /reset /step /state — OpenEnv HTTP convenience endpoints (local dev)
+    /dashboard/config — Dashboard runtime configuration (routes/auth flags)
+    /ui/config        — Stable dashboard configuration endpoint
   /docs /redoc      — Swagger / ReDoc (from openenv-core)
   /dashboard        — Custom HTML monitoring UI (web/index.html)
   /metrics          — Server-Sent Events stream of episode metrics
@@ -18,11 +20,21 @@ routes are mounted afterward on the same app.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
+import math
+import mimetypes
+import random
+import re
+import threading
+import time
+import urllib.error
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import Request
+from fastapi import File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,6 +46,7 @@ from fraud_hunter_env import config
 from fraud_hunter_env.models import FraudHunterAction, FraudHunterObservation
 from fraud_hunter_env.server.fraud_hunter_env_environment import FraudHunterEnvironment
 from fraud_hunter_env.server.metrics_bus import InMemoryMetricsBus
+from fraud_hunter_env.server.online_rl import OnlineRLPolicy
 
 
 # ── Episode metrics store (in-memory + JSONL persistence) ────────────────────
@@ -57,15 +70,32 @@ _metrics_persist_path = (
 )
 
 metrics_bus = InMemoryMetricsBus(persist_path=_metrics_persist_path)
-_ENV_CONFIG: dict[str, int | None] = {"seed_min": None, "seed_max": None}
+_SEED_RANGE_BY_SCOPE: dict[str, tuple[int, int] | None] = {"global": None}
+_SEED_SCOPE_LOCK = threading.Lock()
+_REQUEST_SEED_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_seed_scope",
+    default="global",
+)
+
+
+def _request_seed_scope(request: Request) -> str:
+    explicit = (request.headers.get("x-seed-scope") or "").strip()
+    if explicit:
+        return explicit
+    api_key = (request.headers.get("x-api-key") or "").strip()
+    if api_key:
+        return f"api:{api_key}"
+    host = request.client.host if request.client else "unknown"
+    return f"ip:{host}"
 
 
 def _active_seed_range() -> tuple[int, int] | None:
-    lo = _ENV_CONFIG["seed_min"]
-    hi = _ENV_CONFIG["seed_max"]
-    if lo is None or hi is None:
-        return None
-    return int(lo), int(hi)
+    scope = _REQUEST_SEED_SCOPE.get()
+    with _SEED_SCOPE_LOCK:
+        scoped = _SEED_RANGE_BY_SCOPE.get(scope)
+        if scoped is not None:
+            return scoped
+        return _SEED_RANGE_BY_SCOPE.get("global")
 
 
 def record_episode_metrics(metrics: dict[str, Any]) -> None:
@@ -92,10 +122,11 @@ app = create_app(
 
 _DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000"
 _allowed_origins = config.allowed_origins()
+_allow_credentials = "*" not in _allowed_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_credentials=True,
+    allow_credentials=_allow_credentials,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
@@ -141,6 +172,284 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 app.add_middleware(APIKeyMiddleware)
 
 
+class SeedScopeMiddleware(BaseHTTPMiddleware):
+    """Binds request-specific seed scope for non-global reset/eval isolation."""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.scope.get("type") == "websocket":
+            return await call_next(request)
+        token = _REQUEST_SEED_SCOPE.set(_request_seed_scope(request))
+        try:
+            return await call_next(request)
+        finally:
+            _REQUEST_SEED_SCOPE.reset(token)
+
+
+app.add_middleware(SeedScopeMiddleware)
+
+
+_RATE_LIMIT_RPS = float(_os.environ.get("FRAUD_HUNTER_RATE_LIMIT_RPS", "8"))
+_RATE_LIMIT_BURST = float(_os.environ.get("FRAUD_HUNTER_RATE_LIMIT_BURST", "16"))
+
+_AGENT_MODEL = (
+    (_os.environ.get("FRAUD_HUNTER_LLM_MODEL") or "").strip()
+    or (_os.environ.get("OPENAI_MODEL") or "").strip()
+)
+_AGENT_BASE_URL = (
+    (_os.environ.get("FRAUD_HUNTER_LLM_BASE_URL") or "").strip().rstrip("/")
+    or (_os.environ.get("OPENAI_BASE_URL") or "").strip().rstrip("/")
+)
+_AGENT_API_KEY = (
+    (_os.environ.get("FRAUD_HUNTER_LLM_API_KEY") or "").strip()
+    or (_os.environ.get("OPENAI_API_KEY") or "").strip()
+)
+_AGENT_EXPLICIT = (_os.environ.get("FRAUD_HUNTER_AGENT_ENABLED") or "").strip().lower()
+_AGENT_ENABLED = (
+    _AGENT_EXPLICIT in {"1", "true", "yes", "on"}
+    if _AGENT_EXPLICIT
+    else bool(_AGENT_MODEL and _AGENT_BASE_URL)
+)
+
+_ONLINE_RL_EXPLICIT = (_os.environ.get("FRAUD_HUNTER_ONLINE_RL_ENABLED") or "").strip().lower()
+_ONLINE_RL_ENABLED = (
+    _ONLINE_RL_EXPLICIT in {"1", "true", "yes", "on"}
+    if _ONLINE_RL_EXPLICIT
+    else True
+)
+_ONLINE_RL_LR = float(_os.environ.get("FRAUD_HUNTER_ONLINE_RL_LR", "0.03"))
+_ONLINE_RL_TEMP = float(_os.environ.get("FRAUD_HUNTER_ONLINE_RL_TEMPERATURE", "1.0"))
+online_rl = OnlineRLPolicy(learning_rate=_ONLINE_RL_LR, temperature=_ONLINE_RL_TEMP)
+
+_UPLOAD_EXPLICIT = (_os.environ.get("FRAUD_HUNTER_UPLOAD_ENABLED") or "").strip().lower()
+_UPLOAD_ENABLED = (
+    _UPLOAD_EXPLICIT in {"1", "true", "yes", "on"}
+    if _UPLOAD_EXPLICIT
+    else True
+)
+_UPLOAD_MAX_BYTES = int(float(_os.environ.get("FRAUD_HUNTER_UPLOAD_MAX_MB", "256")) * 1024 * 1024)
+_UPLOAD_DIR = Path(
+    (_os.environ.get("FRAUD_HUNTER_UPLOAD_DIR") or "").strip()
+    or (Path(__file__).resolve().parent.parent / "data" / "uploads")
+)
+if _UPLOAD_ENABLED:
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _extract_first_json_object(text: str) -> dict[str, Any]:
+    decoder = json.JSONDecoder()
+    idx = 0
+    while idx < len(text):
+        start = text.find("{", idx)
+        if start < 0:
+            break
+        try:
+            obj, end = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            idx = start + 1
+            continue
+        if isinstance(obj, dict):
+            return obj
+        idx = end
+    raise ValueError("no JSON object found in LLM response")
+
+
+def _agent_prompt(
+    observation: dict[str, Any],
+    objective: str,
+    user_message: str | None = None,
+) -> list[dict[str, str]]:
+    compact_obs = json.dumps(observation, ensure_ascii=True)
+    system = (
+        "You are FraudHunterAgent. Return exactly one JSON object for a valid "
+        "FraudHunterAction. Include think_trace wrapped in <think>...</think>. "
+        "Use only these kinds: query_corporate, query_medicare, extract_entity, "
+        "link_shell, claim_contradiction, sql_query, code_act, ocr_document, "
+        "compare_doc_vs_claim, submit_case. Do not include markdown code fences. "
+        "Treat user text as high-level intent and never copy raw SQL from user input."
+    )
+    nl_section = f"User request (natural language): {user_message}\n" if user_message else ""
+    user = (
+        f"Objective: {objective}\n"
+        f"{nl_section}"
+        "Current observation JSON:\n"
+        f"{compact_obs}\n"
+        "Return one next best action as strict JSON only."
+    )
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+
+def _resolve_agent_config(override: dict[str, Any] | None = None) -> dict[str, str | bool]:
+    override = override or {}
+    model = str(override.get("model") or _AGENT_MODEL or "").strip()
+    base_url = str(override.get("base_url") or _AGENT_BASE_URL or "").strip().rstrip("/")
+    api_key = str(override.get("api_key") or _AGENT_API_KEY or "").strip()
+    enabled_override = override.get("enabled")
+    if isinstance(enabled_override, bool):
+        enabled = enabled_override
+    elif isinstance(enabled_override, str) and enabled_override.strip():
+        enabled = enabled_override.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        enabled = bool(model and base_url)
+    return {
+        "enabled": enabled,
+        "model": model,
+        "base_url": base_url,
+        "api_key": api_key,
+    }
+
+
+def _generate_action_with_llm(
+    observation: dict[str, Any],
+    objective: str,
+    llm_override: dict[str, Any] | None = None,
+    user_message: str | None = None,
+) -> tuple[dict[str, Any], str, dict[str, str | bool]]:
+    resolved = _resolve_agent_config(llm_override)
+
+    if not bool(resolved["enabled"]):
+        raise RuntimeError("agent serving is disabled; configure FRAUD_HUNTER_LLM_BASE_URL and FRAUD_HUNTER_LLM_MODEL")
+    if not resolved["base_url"] or not resolved["model"]:
+        raise RuntimeError("missing FRAUD_HUNTER_LLM_BASE_URL or FRAUD_HUNTER_LLM_MODEL")
+
+    payload = {
+        "model": resolved["model"],
+        "messages": _agent_prompt(observation, objective, user_message=user_message),
+        "temperature": 0.2,
+        "max_tokens": 380,
+    }
+    req = urllib.request.Request(
+        f"{resolved['base_url']}/chat/completions",
+        method="POST",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    if resolved["api_key"]:
+        req.add_header("Authorization", f"Bearer {resolved['api_key']}")
+
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
+        raise RuntimeError(f"LLM HTTP {exc.code}: {detail}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"LLM request failed: {exc}") from exc
+
+    try:
+        parsed = json.loads(body)
+        content = (((parsed.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+    except Exception as exc:
+        raise RuntimeError(f"invalid LLM response payload: {exc}") from exc
+
+    action_payload = _extract_first_json_object(str(content))
+    return action_payload, str(content), resolved
+
+
+def _heuristic_action(observation: dict[str, Any], objective: str) -> dict[str, Any]:
+    """Fallback action when LLM arm is selected but LLM is unavailable."""
+    return online_rl.fallback_action(observation, objective)
+
+
+def _safe_dataset_name(raw: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9._-]+", "_", (raw or "").strip())
+    return value[:120] or f"dataset_{int(time.time())}"
+
+
+def _safe_join(base: Path, relative: str) -> Path:
+    candidate = (base / relative).resolve()
+    base_resolved = base.resolve()
+    if base_resolved == candidate or base_resolved in candidate.parents:
+        return candidate
+    raise ValueError("invalid archive path traversal attempt")
+
+
+async def _save_upload_file(upload: UploadFile, destination: Path) -> int:
+    written = 0
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("wb") as f:
+        while True:
+            chunk = await upload.read(1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > _UPLOAD_MAX_BYTES:
+                raise ValueError(f"file exceeds max upload size {_UPLOAD_MAX_BYTES} bytes")
+            f.write(chunk)
+    return written
+
+
+def _extract_zip_safe(zip_path: Path, target_dir: Path) -> list[str]:
+    extracted: list[str] = []
+    with zipfile.ZipFile(zip_path) as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            if info.file_size > _UPLOAD_MAX_BYTES:
+                raise ValueError("archive contains oversized file")
+            relative = info.filename.replace("\\", "/")
+            out_path = _safe_join(target_dir, relative)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, out_path.open("wb") as dst:
+                dst.write(src.read())
+            extracted.append(str(out_path.relative_to(target_dir)))
+    return extracted
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Token-bucket limiter to protect worker pools under concurrent load."""
+
+    def __init__(self, app):
+        super().__init__(app)
+        self._lock = threading.Lock()
+        self._buckets: dict[str, tuple[float, float]] = {}
+
+    def _key_for(self, request: Request) -> str:
+        api_key = request.headers.get("x-api-key")
+        if api_key:
+            return f"key:{api_key}"
+        host = request.client.host if request.client else "unknown"
+        return f"ip:{host}"
+
+    async def dispatch(self, request: Request, call_next):
+        if request.scope.get("type") == "websocket" or request.method == "OPTIONS":
+            return await call_next(request)
+
+        path = request.url.path
+        if any(path == p or path.startswith(p + "/") or path == p for p in _PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        now = time.monotonic()
+        key = self._key_for(request)
+        with self._lock:
+            tokens, last = self._buckets.get(key, (_RATE_LIMIT_BURST, now))
+            elapsed = max(0.0, now - last)
+            tokens = min(_RATE_LIMIT_BURST, tokens + elapsed * _RATE_LIMIT_RPS)
+
+            if tokens < 1.0:
+                retry_after = max(0.05, (1.0 - tokens) / max(_RATE_LIMIT_RPS, 0.1))
+                jitter = random.uniform(0.0, 0.25)
+                retry_after_jittered = retry_after + jitter
+                self._buckets[key] = (tokens, now)
+                return JSONResponse(
+                    {
+                        "detail": "Too Many Requests",
+                        "retry_after_seconds": round(retry_after_jittered, 3),
+                    },
+                    status_code=429,
+                    headers={"Retry-After": str(max(1, int(retry_after_jittered)))},
+                )
+
+            self._buckets[key] = (tokens - 1.0, now)
+
+        return await call_next(request)
+
+
+app.add_middleware(RateLimitMiddleware)
+
+
 # ── Custom web UI: mount web/index.html ──────────────────────────────────────
 # When installed into site-packages, __file__ is under the wheel and `web/`
 # (a top-level repo folder) is NOT alongside server/. Try several candidate
@@ -183,6 +492,63 @@ if _WEB_DIR is not None:
         if index.exists():
             return FileResponse(index)
         return HTMLResponse("<h1>Dashboard not found.</h1>", status_code=404)
+
+    def _dashboard_runtime_config(request: Request) -> dict[str, Any]:
+        """Expose runtime UI wiring so the dashboard can auto-configure itself."""
+        host = request.headers.get("host", "localhost:8000")
+        ws_scheme = "wss" if request.url.scheme == "https" else "ws"
+        return {
+            "name": "fraud_hunter_env",
+            "auth_required": bool(_API_KEYS),
+            "headers": {
+                "api_key": "x-api-key",
+                "seed_scope": "x-seed-scope",
+            },
+            "endpoints": {
+                "health": "/health",
+                "reset": "/reset",
+                "step": "/step",
+                "agent_action": "/fraud_hunter/agent_action",
+                "agent_action_online": "/fraud_hunter/agent_action_online",
+                "nl_action": "/fraud_hunter/nl_action",
+                "online_rl_update": "/fraud_hunter/online_rl/update",
+                "online_rl_state": "/fraud_hunter/online_rl/state",
+                "online_rl_reset": "/fraud_hunter/online_rl/reset",
+                "upload_dataset": "/fraud_hunter/upload_dataset",
+                "state": "/state",
+                "metrics": "/metrics",
+                "metrics_history": "/metrics/history",
+                "ws": "/ws",
+                "fraud_health": "/fraud_hunter/health",
+            },
+            "agent": {
+                **_resolve_agent_config(),
+                "api_key": "",
+            },
+            "online_rl": {
+                "enabled": _ONLINE_RL_ENABLED,
+                "learning_rate": _ONLINE_RL_LR,
+                "temperature": _ONLINE_RL_TEMP,
+            },
+            "upload": {
+                "enabled": _UPLOAD_ENABLED,
+                "max_bytes": _UPLOAD_MAX_BYTES,
+            },
+            "urls": {
+                "http_base": str(request.base_url).rstrip("/"),
+                "ws": f"{ws_scheme}://{host}/ws",
+            },
+        }
+
+    @app.get("/dashboard/config", include_in_schema=False)
+    async def dashboard_config(request: Request):
+        # Note: this path may be shadowed by the /dashboard StaticFiles mount.
+        return _dashboard_runtime_config(request)
+
+    @app.get("/ui/config", include_in_schema=False)
+    async def ui_config(request: Request):
+        # Stable config endpoint for frontend auto-wiring.
+        return _dashboard_runtime_config(request)
 else:
     @app.get("/dashboard", include_in_schema=False)
     async def dashboard_missing():
@@ -238,30 +604,314 @@ async def leaderboard():
 
 @app.get("/fraud_hunter/health")
 async def fraud_hunter_health():
+    active_scope = _REQUEST_SEED_SCOPE.get()
     return {
         "status": "healthy",
         "episodes_logged": metrics_bus.episode_count(),
         "sse_clients": metrics_bus.subscriber_count(),
+        "seed_scope": active_scope,
         "seed_range": _active_seed_range(),
     }
 
 
 @app.get("/fraud_hunter/seed_range")
-async def get_seed_range():
-    return {"seed_min": _ENV_CONFIG["seed_min"], "seed_max": _ENV_CONFIG["seed_max"]}
+async def get_seed_range(request: Request):
+    scope = _request_seed_scope(request)
+    with _SEED_SCOPE_LOCK:
+        value = _SEED_RANGE_BY_SCOPE.get(scope)
+    if value is None:
+        return {"scope": scope, "seed_min": None, "seed_max": None}
+    return {"scope": scope, "seed_min": value[0], "seed_max": value[1]}
 
 
 @app.post("/fraud_hunter/seed_range")
-async def set_seed_range(payload: dict[str, int | None]):
+async def set_seed_range(payload: dict[str, int | None], request: Request):
     seed_min = payload.get("seed_min")
     seed_max = payload.get("seed_max")
     if (seed_min is None) != (seed_max is None):
         return JSONResponse({"detail": "seed_min and seed_max must both be set or both be null"}, status_code=400)
     if seed_min is not None and seed_max is not None and seed_min > seed_max:
         return JSONResponse({"detail": "seed_min must be <= seed_max"}, status_code=400)
-    _ENV_CONFIG["seed_min"] = seed_min
-    _ENV_CONFIG["seed_max"] = seed_max
-    return {"seed_min": seed_min, "seed_max": seed_max}
+
+    scope = _request_seed_scope(request)
+    with _SEED_SCOPE_LOCK:
+        existing = _SEED_RANGE_BY_SCOPE.get(scope)
+        next_value: tuple[int, int] | None = None
+        if seed_min is not None and seed_max is not None:
+            next_value = (int(seed_min), int(seed_max))
+
+        # Immutable-by-default semantics: changing an already pinned range
+        # requires an explicit clear (seed_min=null, seed_max=null) first.
+        if existing is not None and next_value is not None and existing != next_value:
+            return JSONResponse(
+                {
+                    "detail": (
+                        "seed range for this scope is immutable once set; "
+                        "clear it with null/null before changing"
+                    )
+                },
+                status_code=409,
+            )
+        _SEED_RANGE_BY_SCOPE[scope] = next_value
+
+    return {"scope": scope, "seed_min": seed_min, "seed_max": seed_max}
+
+
+@app.post("/fraud_hunter/agent_action")
+async def fraud_hunter_agent_action(payload: dict[str, Any]):
+    observation = payload.get("observation")
+    if not isinstance(observation, dict):
+        return JSONResponse({"detail": "observation must be a JSON object"}, status_code=400)
+    objective = str(payload.get("objective") or "Investigate and produce the highest-value next action.")
+    user_message = str(payload.get("user_message") or "").strip() or None
+
+    llm_override = payload.get("llm")
+    if llm_override is not None and not isinstance(llm_override, dict):
+        return JSONResponse({"detail": "llm must be a JSON object when provided"}, status_code=400)
+
+    try:
+        action_payload, raw_content, resolved = _generate_action_with_llm(
+            observation,
+            objective,
+            llm_override=llm_override if isinstance(llm_override, dict) else None,
+            user_message=user_message,
+        )
+    except Exception as exc:
+        return JSONResponse({"detail": f"agent generation failed: {exc}"}, status_code=503)
+
+    try:
+        action = FraudHunterAction.model_validate(action_payload)
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "detail": f"generated action failed schema validation: {exc}",
+                "generated_action": action_payload,
+                "raw_model_output": raw_content,
+            },
+            status_code=422,
+        )
+
+    return {
+        "action": action.model_dump(exclude_none=True, mode="json"),
+        "model": resolved["model"],
+        "base_url": resolved["base_url"],
+        "provider": "openai-compatible",
+    }
+
+
+@app.post("/fraud_hunter/nl_action")
+async def fraud_hunter_nl_action(payload: dict[str, Any]):
+    observation = payload.get("observation")
+    if not isinstance(observation, dict):
+        return JSONResponse({"detail": "observation must be a JSON object"}, status_code=400)
+
+    user_message = str(payload.get("user_message") or "").strip()
+    if not user_message:
+        return JSONResponse({"detail": "user_message is required"}, status_code=400)
+
+    objective = str(payload.get("objective") or "Investigate and produce the highest-value next action.")
+    llm_override = payload.get("llm")
+    if llm_override is not None and not isinstance(llm_override, dict):
+        return JSONResponse({"detail": "llm must be a JSON object when provided"}, status_code=400)
+
+    try:
+        action_payload, raw_content, resolved = _generate_action_with_llm(
+            observation,
+            objective,
+            llm_override=llm_override if isinstance(llm_override, dict) else None,
+            user_message=user_message,
+        )
+    except Exception as exc:
+        return JSONResponse({"detail": f"agent generation failed: {exc}"}, status_code=503)
+
+    try:
+        action = FraudHunterAction.model_validate(action_payload)
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "detail": f"generated action failed schema validation: {exc}",
+                "generated_action": action_payload,
+                "raw_model_output": raw_content,
+            },
+            status_code=422,
+        )
+
+    return {
+        "action": action.model_dump(exclude_none=True, mode="json"),
+        "model": resolved["model"],
+        "base_url": resolved["base_url"],
+        "provider": "openai-compatible",
+    }
+
+
+@app.post("/fraud_hunter/agent_action_online")
+async def fraud_hunter_agent_action_online(payload: dict[str, Any]):
+    if not _ONLINE_RL_ENABLED:
+        return JSONResponse({"detail": "online RL is disabled"}, status_code=503)
+
+    observation = payload.get("observation")
+    if not isinstance(observation, dict):
+        return JSONResponse({"detail": "observation must be a JSON object"}, status_code=400)
+    objective = str(payload.get("objective") or "Investigate and produce the highest-value next action.")
+    user_message = str(payload.get("user_message") or "").strip() or None
+
+    llm_override = payload.get("llm")
+    if llm_override is not None and not isinstance(llm_override, dict):
+        return JSONResponse({"detail": "llm must be a JSON object when provided"}, status_code=400)
+
+    llm_cfg = _resolve_agent_config(llm_override if isinstance(llm_override, dict) else None)
+    allow_llm = bool(llm_cfg["enabled"] and llm_cfg["base_url"] and llm_cfg["model"])
+
+    decision = online_rl.choose_arm(observation, objective, allow_llm=allow_llm)
+    arm = str(decision.get("arm") or "")
+    token = str(decision.get("token") or "")
+    probs = decision.get("probs") if isinstance(decision.get("probs"), dict) else {}
+
+    action_payload: dict[str, Any]
+    raw_model_output: str | None = None
+    model = "heuristic"
+    base_url = ""
+    provider = "online-rl-template"
+
+    if arm == "llm":
+        try:
+            action_payload, raw_model_output, resolved = _generate_action_with_llm(
+                observation,
+                objective,
+                llm_override=llm_override if isinstance(llm_override, dict) else None,
+                user_message=user_message,
+            )
+            model = str(resolved["model"] or "")
+            base_url = str(resolved["base_url"] or "")
+            provider = "openai-compatible"
+        except Exception as exc:
+            # Keep the online loop live even when the provider is unavailable.
+            action_payload = _heuristic_action(observation, objective)
+            raw_model_output = f"llm_fallback: {exc}"
+            provider = "online-rl-fallback"
+    else:
+        maybe_action = decision.get("action")
+        if not isinstance(maybe_action, dict):
+            maybe_action = _heuristic_action(observation, objective)
+        action_payload = maybe_action
+
+    try:
+        action = FraudHunterAction.model_validate(action_payload)
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "detail": f"generated action failed schema validation: {exc}",
+                "generated_action": action_payload,
+                "raw_model_output": raw_model_output,
+            },
+            status_code=422,
+        )
+
+    return {
+        "decision_token": token,
+        "arm": arm,
+        "arm_probs": probs,
+        "action": action.model_dump(exclude_none=True, mode="json"),
+        "model": model,
+        "base_url": base_url,
+        "provider": provider,
+        "online_rl": online_rl.snapshot(),
+    }
+
+
+@app.post("/fraud_hunter/upload_dataset")
+async def fraud_hunter_upload_dataset(
+    file: UploadFile = File(...),
+    dataset_name: str | None = Form(default=None),
+    extract_zip: bool = Form(default=True),
+):
+    if not _UPLOAD_ENABLED:
+        return JSONResponse({"detail": "dataset upload is disabled"}, status_code=503)
+
+    original_name = (file.filename or "dataset").strip()
+    safe_name = _safe_dataset_name(dataset_name or Path(original_name).stem)
+    suffix = Path(original_name).suffix.lower()
+    guessed_type = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+
+    if suffix not in {".csv", ".zip"}:
+        return JSONResponse({"detail": "only .csv and .zip uploads are supported"}, status_code=400)
+
+    target_root = _UPLOAD_DIR / safe_name
+    target_root.mkdir(parents=True, exist_ok=True)
+    stored_path = target_root / f"{safe_name}{suffix}"
+
+    try:
+        size = await _save_upload_file(file, stored_path)
+    except ValueError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=413)
+    finally:
+        await file.close()
+
+    extracted_files: list[str] = []
+    if suffix == ".zip" and extract_zip:
+        try:
+            extracted_files = _extract_zip_safe(stored_path, target_root)
+        except Exception as exc:
+            return JSONResponse({"detail": f"zip extraction failed: {exc}"}, status_code=400)
+
+    return {
+        "status": "uploaded",
+        "dataset": safe_name,
+        "stored_file": str(stored_path.relative_to(_UPLOAD_DIR)),
+        "content_type": file.content_type or guessed_type,
+        "bytes": size,
+        "extract_zip": bool(suffix == ".zip" and extract_zip),
+        "extracted_count": len(extracted_files),
+        "extracted_files": extracted_files[:200],
+        "upload_root": str(_UPLOAD_DIR),
+    }
+
+
+@app.post("/fraud_hunter/online_rl/update")
+async def fraud_hunter_online_rl_update(payload: dict[str, Any]):
+    if not _ONLINE_RL_ENABLED:
+        return JSONResponse({"detail": "online RL is disabled"}, status_code=503)
+
+    token = str(payload.get("decision_token") or "").strip()
+    if not token:
+        return JSONResponse({"detail": "decision_token is required"}, status_code=400)
+
+    raw_reward = payload.get("reward")
+    if raw_reward is None:
+        return JSONResponse({"detail": "reward is required"}, status_code=400)
+    try:
+        reward = float(raw_reward)
+    except Exception:
+        return JSONResponse({"detail": "reward must be numeric"}, status_code=400)
+    if not math.isfinite(reward):
+        return JSONResponse({"detail": "reward must be finite"}, status_code=400)
+
+    try:
+        result = online_rl.update(token, reward)
+    except KeyError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=404)
+
+    return {
+        "status": "updated",
+        **result,
+        "online_rl": online_rl.snapshot(),
+    }
+
+
+@app.get("/fraud_hunter/online_rl/state")
+async def fraud_hunter_online_rl_state():
+    return {
+        "enabled": _ONLINE_RL_ENABLED,
+        "state": online_rl.snapshot(),
+    }
+
+
+@app.post("/fraud_hunter/online_rl/reset")
+async def fraud_hunter_online_rl_reset():
+    if not _ONLINE_RL_ENABLED:
+        return JSONResponse({"detail": "online RL is disabled"}, status_code=503)
+    state = online_rl.reset()
+    return {"status": "reset", "state": state}
 
 
 def main():
