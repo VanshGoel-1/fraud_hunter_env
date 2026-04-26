@@ -7,6 +7,7 @@ runs/
 # Case bank SQLite files — large, regenerated at runtime or via the notebook
 data/case_bank/
 data/uploads/
+*.db
 
 
 # Python / tooling

@@ -7,6 +7,7 @@ lora_final/
 # Case bank SQLite files — large, not needed to build the image
 data/case_bank/
 data/uploads/
+*.db
 
 # Assets generated at training time
 assets/training_curves.png
