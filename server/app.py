@@ -121,11 +121,6 @@ def _get_or_create_http_env(request: Request) -> FraudHunterEnvironment:
         return env
 
 
-def record_episode_metrics(metrics: dict[str, Any]) -> None:
-    """Backwards-compatible alias — forwards to the new MetricsBus."""
-    metrics_bus.record(metrics)
-
-
 # ── OpenEnv-compliant FastAPI app (provides /ws, /reset, /step, /state) ──────
 # Wire `on_episode_end` so terminal-step metrics flow into _episode_log + SSE.
 
@@ -143,7 +138,6 @@ app = create_app(
 # ── CORS allowlist (env-driven) ──────────────────────────────────────────────
 # Defaults are dev-friendly; tighten via ALLOWED_ORIGINS="https://a.com,https://b.com".
 
-_DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000"
 _allowed_origins = config.allowed_origins()
 _allow_credentials = "*" not in _allowed_origins
 app.add_middleware(
@@ -161,11 +155,6 @@ app.add_middleware(
 # UI/operators can probe the service without a key.
 
 _PUBLIC_PREFIXES = config.PUBLIC_ROUTE_PREFIXES
-
-
-def _load_api_keys() -> set[str]:
-    """Backwards-compatible alias — forwards to fraud_hunter_env.config."""
-    return config.api_keys()
 
 
 _API_KEYS: set[str] = config.api_keys()
@@ -583,6 +572,16 @@ else:
         )
 
 
+# ── Root redirect → dashboard ─────────────────────────────────────────────────
+# HF Spaces users land at / — redirect them straight to the UI.
+
+from fastapi.responses import RedirectResponse  # noqa: E402 (already imported above)
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    """Redirect bare root to the custom dashboard UI."""
+    return RedirectResponse(url="/dashboard/", status_code=302)
+
 # ── Server-Sent Events: live metrics ─────────────────────────────────────────
 
 @app.get("/metrics")
@@ -892,46 +891,66 @@ async def fraud_hunter_agent_action_online(payload: dict[str, Any]):
 
 @app.post("/fraud_hunter/upload_dataset")
 async def fraud_hunter_upload_dataset(
-    file: UploadFile = File(...),
+    file: list[UploadFile] = File(...),
     dataset_name: str | None = Form(default=None),
     extract_zip: bool = Form(default=True),
 ):
     if not _UPLOAD_ENABLED:
         return JSONResponse({"detail": "dataset upload is disabled"}, status_code=503)
 
-    original_name = (file.filename or "dataset").strip()
-    safe_name = _safe_dataset_name(dataset_name or Path(original_name).stem)
-    suffix = Path(original_name).suffix.lower()
-    guessed_type = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+    uploads = file
+    if not uploads:
+        return JSONResponse({"detail": "at least one file is required"}, status_code=400)
 
-    if suffix not in {".csv", ".zip"}:
-        return JSONResponse({"detail": "only .csv and .zip uploads are supported"}, status_code=400)
-
+    first_name = (uploads[0].filename or "dataset").strip()
+    safe_name = _safe_dataset_name(dataset_name or Path(first_name).stem)
     target_root = _UPLOAD_DIR / safe_name
     target_root.mkdir(parents=True, exist_ok=True)
-    stored_path = target_root / f"{safe_name}{suffix}"
-
-    try:
-        size = await _save_upload_file(file, stored_path)
-    except ValueError as exc:
-        return JSONResponse({"detail": str(exc)}, status_code=413)
-    finally:
-        await file.close()
-
+    stored_files: list[str] = []
     extracted_files: list[str] = []
-    if suffix == ".zip" and extract_zip:
+    content_types: list[str] = []
+    total_bytes = 0
+    extracted_any = False
+
+    for idx, upload in enumerate(uploads):
+        original_name = (upload.filename or f"dataset_{idx + 1}").strip()
+        suffix = Path(original_name).suffix.lower()
+        guessed_type = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+        content_types.append(upload.content_type or guessed_type)
+
+        if suffix not in {".csv", ".zip"}:
+            return JSONResponse({"detail": "only .csv and .zip uploads are supported"}, status_code=400)
+
+        stem = safe_name if len(uploads) == 1 else _safe_dataset_name(Path(original_name).stem)
+        stored_path = target_root / f"{stem}{suffix}"
+        if stored_path.exists() and len(uploads) > 1:
+            stored_path = target_root / f"{stem}_{idx + 1}{suffix}"
+
         try:
-            extracted_files = _extract_zip_safe(stored_path, target_root)
-        except Exception as exc:
-            return JSONResponse({"detail": f"zip extraction failed: {exc}"}, status_code=400)
+            total_bytes += await _save_upload_file(upload, stored_path)
+        except ValueError as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=413)
+        finally:
+            await upload.close()
+
+        stored_files.append(str(stored_path.relative_to(_UPLOAD_DIR)))
+        if suffix == ".zip" and extract_zip:
+            try:
+                extracted_files.extend(_extract_zip_safe(stored_path, target_root))
+                extracted_any = True
+            except Exception as exc:
+                return JSONResponse({"detail": f"zip extraction failed: {exc}"}, status_code=400)
 
     return {
         "status": "uploaded",
         "dataset": safe_name,
-        "stored_file": str(stored_path.relative_to(_UPLOAD_DIR)),
-        "content_type": file.content_type or guessed_type,
-        "bytes": size,
-        "extract_zip": bool(suffix == ".zip" and extract_zip),
+        "stored_file": stored_files[0],
+        "stored_files": stored_files,
+        "content_type": content_types[0],
+        "content_types": content_types,
+        "bytes": total_bytes,
+        "file_count": len(stored_files),
+        "extract_zip": extracted_any,
         "extracted_count": len(extracted_files),
         "extracted_files": extracted_files[:200],
         "upload_root": str(_UPLOAD_DIR),

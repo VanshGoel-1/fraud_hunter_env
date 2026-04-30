@@ -33,6 +33,32 @@ def test_upload_csv_dataset_roundtrip(tmp_path):
     assert stored.read_text(encoding="utf-8") == payload.decode("utf-8")
 
 
+def test_upload_multiple_csv_files_roundtrip(tmp_path):
+    server_app._UPLOAD_ENABLED = True
+    server_app._UPLOAD_DIR = tmp_path / "uploads"
+    server_app._UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    client = TestClient(server_app.app)
+    first = "id,value\n1,foo\n".encode("utf-8")
+    second = "id,value\n2,bar\n".encode("utf-8")
+    response = client.post(
+        "/fraud_hunter/upload_dataset",
+        data={"dataset_name": "claims_batch_multi", "extract_zip": "false"},
+        files=[
+            ("file", ("claims_a.csv", first, "text/csv")),
+            ("file", ("claims_b.csv", second, "text/csv")),
+        ],
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json() or {}
+    assert body.get("file_count") == 2
+    stored_files = body.get("stored_files") or []
+    assert len(stored_files) == 2
+    assert (server_app._UPLOAD_DIR / stored_files[0]).read_text(encoding="utf-8") == first.decode("utf-8")
+    assert (server_app._UPLOAD_DIR / stored_files[1]).read_text(encoding="utf-8") == second.decode("utf-8")
+
+
 def test_upload_zip_blocks_path_traversal(tmp_path):
     server_app._UPLOAD_ENABLED = True
     server_app._UPLOAD_DIR = tmp_path / "uploads"

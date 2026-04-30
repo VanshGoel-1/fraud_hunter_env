@@ -1,97 +1,219 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fraud Hunter Medicare Dashboard</title>
-  <meta name="description" content="Guided Medicare dashboard with learning curve and real-time runtime parameters.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <title>Qui Tam Fraud Investigator</title>
+  <meta name="description" content="Qui Tam Fraud Investigator with RL stats and natural language chat.">
   <style>
     :root {
-      --bg: #f2f6fb;
-      --panel: #ffffff;
-      --line: #d7e0ec;
-      --text: #1f2a37;
-      --muted: #607388;
-      --accent: #1467c2;
-      --ok: #0f8a53;
-      --warn: #9a5f00;
-      --err: #ad2a2a;
-      --radius: 12px;
-      --shadow: 0 8px 24px rgba(29, 43, 58, 0.06);
+      --background: #e7e5e4;
+      --foreground: #202020;
+      --card: #f5f5f4;
+      --card-foreground: #202020;
+      --popover: #f5f5f4;
+      --popover-foreground: #202020;
+      --primary: #644a40;
+      --primary-foreground: #ffffff;
+      --secondary: #ffdfb5;
+      --secondary-foreground: #582d1d;
+      --muted: #e7e5e4;
+      --muted-foreground: #646464;
+      --accent: #e4e0dc;
+      --accent-foreground: #202020;
+      --destructive: #e54d2e;
+      --destructive-foreground: #ffffff;
+      --border: #d6d3d1;
+      --input: #d6d3d1;
+      --ring: #644a40;
+      --radius: 0.5rem;
+
+      /* Mapping for existing components */
+      --bg: var(--background);
+      --panel: var(--card);
+      --line: var(--border);
+      --text: var(--foreground);
+      --muted-text: var(--muted-foreground);
+      --accent-color: var(--primary);
+      --accent-bg: rgba(100, 74, 64, 0.1);
+      --ok: #2e7d52;
+      --warn: #b07800;
+      --err: var(--destructive);
+      --shadow: 0 2px 12px rgba(60, 40, 20, 0.08);
+      
+      --chart-line: var(--primary);
+      --chart-grid: var(--muted);
     }
 
-    * { box-sizing: border-box; }
+    html.dark {
+      --background: #111111;
+      --foreground: #eeeeee;
+      --card: #1e1e1e;
+      --card-foreground: #eeeeee;
+      --popover: #1e1e1e;
+      --popover-foreground: #eeeeee;
+      --primary: #ffe0c2;
+      --primary-foreground: #1a0d00;
+      --secondary: #393028;
+      --secondary-foreground: #ffe0c2;
+      --muted: #2a2a2a;
+      --muted-foreground: #a0a0a0;
+      --accent: #2f2f2f;
+      --accent-foreground: #eeeeee;
+      --destructive: #e54d2e;
+      --destructive-foreground: #ffffff;
+      --border: #333333;
+      --input: #484848;
+      --ring: #ffe0c2;
+      
+      /* Mapping for existing components */
+      --bg: var(--background);
+      --panel: var(--card);
+      --line: var(--border);
+      --text: var(--foreground);
+      --muted-text: var(--muted-foreground);
+      --accent-color: var(--primary);
+      --accent-bg: rgba(255, 224, 194, 0.15);
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      --warn: #f5c542;
+      
+      --chart-line: var(--primary);
+      --chart-grid: #2a2a2a;
+    }
+
+    @theme inline {
+      --color-card: var(--card);
+      --color-ring: var(--ring);
+      --color-input: var(--input);
+      --color-muted: var(--muted);
+      --color-accent: var(--accent);
+      --color-border: var(--border);
+      --color-radius: var(--radius);
+      --color-chart-1: var(--chart-1);
+      --color-chart-2: var(--chart-2);
+      --color-chart-3: var(--chart-3);
+      --color-chart-4: var(--chart-4);
+      --color-chart-5: var(--chart-5);
+      --color-popover: var(--popover);
+      --color-primary: var(--primary);
+      --color-sidebar: var(--sidebar);
+      --color-secondary: var(--secondary);
+      --color-background: var(--background);
+      --color-foreground: var(--foreground);
+      --color-destructive: var(--destructive);
+      --color-sidebar-ring: var(--sidebar-ring);
+      --color-sidebar-accent: var(--sidebar-accent);
+      --color-sidebar-border: var(--sidebar-border);
+      --color-card-foreground: var(--card-foreground);
+      --color-sidebar-primary: var(--sidebar-primary);
+      --color-muted-foreground: var(--muted-foreground);
+      --color-accent-foreground: var(--accent-foreground);
+      --color-popover-foreground: var(--popover-foreground);
+      --color-primary-foreground: var(--primary-foreground);
+      --color-sidebar-foreground: var(--sidebar-foreground);
+      --color-secondary-foreground: var(--secondary-foreground);
+      --color-destructive-foreground: var(--destructive-foreground);
+      --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+      --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    ::placeholder {
+      color: var(--muted-foreground);
+      opacity: 1;
+    }
 
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       color: var(--text);
       background: var(--bg);
+      height: 100vh;
+      overflow: hidden;
     }
 
     .app {
-      max-width: 1200px;
+      max-width: 1600px;
       margin: 0 auto;
       padding: 16px;
       display: grid;
-      gap: 12px;
+      grid-template-rows: auto 1fr;
+      gap: 16px;
+      height: 100%;
     }
 
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      position: relative;
       box-shadow: var(--shadow);
-      padding: 14px;
     }
 
     .grid {
       display: grid;
-      grid-template-columns: 360px 1fr;
-      gap: 12px;
-      align-items: start;
+      grid-template-columns: 320px 1fr 350px;
+      gap: 16px;
+      height: 100%;
+      min-height: 0;
     }
 
-    .stack { display: grid; gap: 10px; }
-
     h1 {
-      margin: 0 0 6px;
-      font-size: 22px;
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     h2 {
       margin: 0;
-      font-size: 16px;
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted-foreground);
+      flex-shrink: 0;
     }
 
-    .sub {
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
       align-items: center;
+      padding: 0 8px;
     }
 
-    .tri {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
+    .step-label {
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
     }
 
-    .pair {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    input, textarea, button, select {
+    input,
+    textarea,
+    button,
+    select {
       font: inherit;
+      background: transparent;
+      color: var(--text);
     }
 
     input[type="text"],
@@ -99,507 +221,947 @@
     textarea,
     select {
       width: 100%;
-      border: 1px solid var(--line);
+      border: 1px solid var(--input);
       border-radius: 8px;
       padding: 10px;
-      background: #fff;
+      background: var(--panel);
       color: var(--text);
+      user-select: auto;
+    }
+
+    input:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 2px var(--accent-bg);
     }
 
     textarea {
-      min-height: 88px;
+      min-height: 80px;
       resize: vertical;
     }
 
     button {
-      border: 1px solid var(--line);
+      border: 1px solid var(--input);
       border-radius: 8px;
       padding: 8px 12px;
-      background: #fff;
+      background: var(--panel);
       color: var(--text);
       font-weight: 600;
       cursor: pointer;
       white-space: nowrap;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    button:hover {
+      background: var(--accent);
     }
 
     button.primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
+      background: var(--primary);
+      border-color: var(--primary);
+      color: var(--primary-foreground);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    button.primary:hover {
+      opacity: 0.85;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
     }
 
     button:disabled {
-      opacity: 0.65;
+      opacity: 0.4;
       cursor: not-allowed;
     }
 
     .note {
       margin: 0;
       font-size: 12px;
-      color: var(--muted);
+      color: var(--muted-foreground);
     }
 
-    .note.ok { color: var(--ok); }
-    .note.err { color: var(--err); }
-
-    .guide-list {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-      display: grid;
-      gap: 8px;
-    }
-
-    .guide-item {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px 10px;
-      display: grid;
-      grid-template-columns: 24px 1fr;
-      gap: 8px;
-      align-items: start;
-      background: #fff;
-    }
-
-    .guide-step {
-      width: 24px;
-      height: 24px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      font-size: 12px;
-      font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--muted);
-    }
-
-    .guide-item.done .guide-step {
+    .note.ok {
       color: var(--ok);
-      border-color: #b8dfca;
-      background: #eef9f3;
     }
 
-    .guide-item.active .guide-step {
-      color: var(--accent);
-      border-color: #b9d4f4;
-      background: #eef5ff;
-    }
-
-    .mini {
-      margin-top: 3px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .checklist {
-      display: grid;
-      gap: 6px;
-      margin-top: 4px;
-    }
-
-    .check-item {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px 10px;
-      display: grid;
-      grid-template-columns: 26px 1fr;
-      gap: 8px;
-      align-items: center;
-      background: #fff;
-    }
-
-    .badge {
-      width: 26px;
-      height: 26px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--muted);
-      background: #fff;
-    }
-
-    .check-item.pending .badge {
-      color: var(--warn);
-      border-color: #efdfbe;
-      background: #fff7ea;
-    }
-
-    .check-item.ok .badge {
-      color: var(--ok);
-      border-color: #b8dfca;
-      background: #eef9f3;
-    }
-
-    .check-item.fail .badge {
+    .note.err {
       color: var(--err);
-      border-color: #efcccc;
-      background: #fff1f1;
     }
 
-    .check-label {
-      font-size: 13px;
+    /* Collapsible Setup Panel */
+    .collapsible-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 4px;
+      flex-shrink: 0;
+    }
+
+    .collapsible-panel summary {
+      padding: 12px;
       font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+      display: block;
+      position: relative;
+      background: transparent;
+      list-style: none;
     }
 
-    .check-meta {
-      margin-top: 2px;
-      color: var(--muted);
+    .collapsible-panel summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .collapsible-panel summary:hover {
+      background: var(--bg);
+    }
+
+    .collapsible-panel summary::after {
+      content: '▼';
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 10px;
+      color: var(--muted-foreground);
+      transition: transform 0.2s ease;
+    }
+
+    .collapsible-panel[open] summary::after {
+      transform: translateY(-50%) rotate(180deg);
+    }
+
+    .collapsible-panel[open] summary {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .collapsible-content {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      user-select: auto;
+    }
+
+    /* Drag and Drop Sources */
+    .drop-zone {
+      border: 2px dashed var(--line);
+      border-radius: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--muted-text);
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--bg);
+      flex-shrink: 0;
+    }
+
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(168, 199, 250, 0.1);
+      color: var(--accent);
+    }
+
+    /* Source Management UI */
+    .source-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+
+    .source-toolbar button {
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+
+    .source-summary {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
       font-size: 12px;
-      white-space: pre-wrap;
-      word-break: break-word;
+      color: var(--muted-foreground);
+      line-height: 1.5;
+      flex-shrink: 0;
+    }
+
+    .source-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      max-height: 250px;
+      flex-shrink: 0;
+    }
+
+    .source-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .source-item input[type="checkbox"] {
+      width: auto;
+      accent-color: var(--accent);
+      margin-right: 8px;
+    }
+
+    .delete-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted-foreground);
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .delete-btn:hover {
+      color: var(--err);
+      background: rgba(242, 139, 130, 0.1);
+    }
+
+    /* Chat Area */
+    .feed-container {
+      flex-grow: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-right: 8px;
+    }
+
+    .chat-bubble {
+      padding: 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+
+    .chat-bubble.user {
+      background: var(--secondary);
+      color: var(--secondary-foreground);
+      align-self: flex-end;
+      max-width: 85%;
+      border-color: transparent;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+
+    .chat-bubble.system {
+      background: transparent;
+      border: 1px solid var(--line);
+    }
+
+    .chat-bubble strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted-foreground);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .chat-input-wrapper {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      background: var(--panel);
+      border-radius: 16px;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+
+    .chat-input-wrapper textarea {
+      background: transparent;
+      border: none;
+      min-height: 40px;
+      padding: 8px 0;
+      resize: none;
+    }
+
+    .chat-input-wrapper button {
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 4px;
+    }
+
+    /* RL Stats & Internals */
+    .curve-container {
+      position: relative;
+      width: 100%;
+      height: 160px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+      flex-shrink: 0;
     }
 
     .curve {
+      position: absolute;
+      inset: 0;
       width: 100%;
-      height: 220px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-      overflow: hidden;
+      height: 100%;
+    }
+
+    .awaiting-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted-foreground);
+      font-size: 13px;
+      z-index: 10;
+      pointer-events: none;
     }
 
     .stats {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
+      flex-shrink: 0;
     }
 
     .stat {
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 8px;
-      background: #fff;
+      background: var(--panel);
+      text-align: center;
     }
 
     .stat .k {
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 3px;
+      font-size: 11px;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+      text-transform: uppercase;
     }
 
     .stat .v {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
+      color: var(--primary);
     }
 
-    .feed {
-      display: grid;
+    .checklist {
+      display: flex;
+      flex-direction: column;
       gap: 8px;
-      max-height: 54vh;
-      overflow: auto;
-      padding: 4px;
+      flex-shrink: 0;
     }
 
-    .item {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      background: #fff;
-      font-size: 13px;
-      line-height: 1.45;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .item strong {
-      display: block;
-      margin-bottom: 4px;
-    }
-
-    .small-check {
-      display: inline-flex;
+    .check-item {
+      display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    .badge {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      background: var(--panel);
       color: var(--muted);
+      border: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+
+    .check-item.ok .badge {
+      background: rgba(76, 175, 125, 0.15);
+      color: var(--ok);
+      border-color: var(--ok);
+    }
+
+    .check-item.pending .badge {
+      background: rgba(230, 168, 23, 0.15);
+      color: var(--warn);
+      border-color: var(--warn);
+    }
+
+    .check-item.fail .badge {
+      background: rgba(229, 77, 46, 0.15);
+      color: var(--err);
+      border-color: var(--err);
+    }
+
+    .check-meta {
+      font-size: 11px;
+      color: var(--muted-foreground);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-content {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 24px;
+      width: 340px;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* --- Animated Theme Toggle --- */
+    #themeToggle {
+      position: relative;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--input);
+      border-radius: 8px;
+      background: var(--panel);
+      cursor: pointer;
+      overflow: hidden;
+      flex-shrink: 0;
+      color: var(--text);
+    }
+
+    #themeToggle:hover {
+      background: var(--accent);
+    }
+
+    .toggle-sun,
+    .toggle-moon {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  opacity 0.3s ease;
+    }
+
+    /* Light mode: sun visible, moon hidden */
+    .toggle-sun  { transform: scale(1) rotate(0deg);   opacity: 1; }
+    .toggle-moon { transform: scale(0) rotate(-45deg); opacity: 0; }
+
+    /* Dark mode: moon visible, sun hidden */
+    html.dark .toggle-sun  { transform: scale(0) rotate(45deg); opacity: 0; }
+    html.dark .toggle-moon { transform: scale(1) rotate(0deg);  opacity: 1; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--line);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #5f6368;
+    }
+
+    /* --- MOBILE / APP LAYOUT (NotebookLM Style) --- */
+    .bottom-nav {
+      display: none;
     }
 
     @media (max-width: 1024px) {
-      .grid { grid-template-columns: 1fr; }
-    }
 
-    @media (max-width: 760px) {
-      .row, .pair, .tri { grid-template-columns: 1fr; }
+      /* Base Resets for Mobile */
+      body {
+        background: var(--bg);
+      }
+
+      .app {
+        padding: 0;
+        grid-template-rows: auto 1fr;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+
+      .header-bar {
+        padding: 16px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        z-index: 100;
+      }
+
+      /* Stop iOS Auto-Zoom */
+      input,
+      textarea,
+      select {
+        font-size: 16px !important;
+      }
+
+      /* Grid becomes stacked, hidden by default */
+      .grid {
+        display: block;
+        height: calc(100vh - 65px - 64px - env(safe-area-inset-bottom));
+        /* 100vh - header - nav */
+        overflow: hidden;
+      }
+
+      /* Panels take full area */
+      .panel {
+        display: none;
+        height: 100%;
+        border: none;
+        border-radius: 0;
+        padding: 16px;
+      }
+
+      .panel.mobile-active {
+        display: flex;
+      }
+
+      /* Bottom Navigation Bar */
+      .bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: calc(64px + env(safe-area-inset-bottom));
+        background: var(--panel);
+        border-top: 1px solid var(--input);
+        padding: 0 8px;
+        padding-bottom: env(safe-area-inset-bottom);
+        justify-content: space-around;
+        align-items: center;
+        z-index: 1000;
+      }
+
+      .nav-btn {
+        background: transparent;
+        border: none;
+        color: var(--muted-foreground);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 500;
+        gap: 4px;
+        flex: 1;
+        height: 100%;
+        border-radius: 0;
+      }
+
+      .nav-btn.active {
+        color: var(--text);
+      }
+
+      .nav-btn svg {
+        width: 24px;
+        height: 24px;
+        stroke: currentColor;
+        fill: none;
+        opacity: 0.8;
+        transition: all 0.2s;
+      }
+
+      .nav-btn.active svg {
+        opacity: 1;
+        fill: var(--accent-bg);
+        stroke: var(--accent-color);
+      }
     }
   </style>
 </head>
+
 <body>
   <div class="app">
-    <section class="panel stack">
-      <div>
-        <h1>Fraud Hunter Medicare Dashboard</h1>
-        <p class="sub">Guided workflow with real-time parameter control, learning curve, and backend checklist.</p>
+    <div class="header-bar">
+      <h1><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+        </svg> Qui Tam Fraud Investigator</h1>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button id="themeToggle" title="Toggle Dark/Light Mode" aria-label="Toggle colour theme">
+          <!-- Sun (light mode) -->
+          <svg class="toggle-sun" width="20" height="20" viewBox="0 0 25 25" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               xmlns="http://www.w3.org/2000/svg">
+            <path d="M12.4058 17.7625C15.1672 17.7625 17.4058 15.5239 17.4058 12.7625C17.4058 10.0011 15.1672 7.76251 12.4058 7.76251C9.64434 7.76251 7.40576 10.0011 7.40576 12.7625C7.40576 15.5239 9.64434 17.7625 12.4058 17.7625Z"/>
+            <path d="M12.4058 1.76251V3.76251"/>
+            <path d="M12.4058 21.7625V23.7625"/>
+            <path d="M4.62598 4.98248L6.04598 6.40248"/>
+            <path d="M18.7656 19.1225L20.1856 20.5425"/>
+            <path d="M1.40576 12.7625H3.40576"/>
+            <path d="M21.4058 12.7625H23.4058"/>
+            <path d="M4.62598 20.5425L6.04598 19.1225"/>
+            <path d="M18.7656 6.40248L20.1856 4.98248"/>
+          </svg>
+          <!-- Moon (dark mode) -->
+          <svg class="toggle-moon" width="20" height="20" viewBox="0 0 25 25" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               xmlns="http://www.w3.org/2000/svg">
+            <path d="M21.1918 13.2013C21.0345 14.9035 20.3957 16.5257 19.35 17.8781C18.3044 19.2305 16.8953 20.2571 15.2875 20.8379C13.6797 21.4186 11.9398 21.5294 10.2713 21.1574C8.60281 20.7854 7.07479 19.9459 5.86602 18.7371C4.65725 17.5283 3.81774 16.0003 3.4457 14.3318C3.07367 12.6633 3.18451 10.9234 3.76526 9.31561C4.346 7.70783 5.37263 6.29868 6.72501 5.25307C8.07739 4.20746 9.69959 3.56862 11.4018 3.41132C10.4052 4.75958 9.92564 6.42077 10.0503 8.09273C10.175 9.76469 10.8957 11.3364 12.0812 12.5219C13.2667 13.7075 14.8384 14.4281 16.5104 14.5528C18.1823 14.6775 19.8435 14.1979 21.1918 13.2013Z"/>
+          </svg>
+        </button>
+        <button id="clearBtn">Clear Chat</button>
       </div>
-      <div class="pair">
-        <input id="apiKeyInput" type="password" placeholder="Step 1: X-API-Key (if server auth is enabled)">
-        <div class="row" style="margin:0;">
-          <button id="newEpisodeBtn" class="primary">Step 2: Start New Episode</button>
-          <button id="clearBtn">Clear Feed</button>
-        </div>
-      </div>
-      <p id="statusLine" class="note">Ready.</p>
-    </section>
+    </div>
 
     <div class="grid">
-      <aside class="stack">
-        <section class="panel stack">
-          <h2>How To Navigate</h2>
-          <ul id="guideList" class="guide-list"></ul>
-        </section>
+      <!-- PANEL 1: SOURCES -->
+      <aside class="panel" id="panelSources">
+        <div class="step-label">Step 3 (Optional)</div>
+        <h2>Populate Evidence Vault</h2>
 
-        <section class="panel stack">
-          <h2>Runtime Parameters</h2>
-          <p class="note">Update these anytime. New chat sends use the latest values immediately.</p>
-          <textarea id="objectiveInput" placeholder="Investigation objective">Hyper-focus on Medicare fraud: prioritize beneficiary and claim contradictions, then summarize evidence.</textarea>
-          <input id="llmBaseUrlInput" type="text" placeholder="LLM API Base URL (OpenAI-compatible)">
-          <div class="pair">
-            <input id="llmModelInput" type="text" placeholder="LLM model name">
-            <input id="llmApiKeyInput" type="password" placeholder="LLM API key (optional)">
-          </div>
-          <label class="small-check">
-            <input id="forceHeuristicInput" type="checkbox">
-            Force heuristic fallback (ignore LLM settings)
-          </label>
-          <p id="paramsStatus" class="note">LLM parameters not configured yet. Heuristic mode will be used unless configured.</p>
-        </section>
+        <div id="dropZone" class="drop-zone">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            style="margin-bottom:8px; color:var(--muted);">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+          </svg>
+          <br>Drag & Drop Files or Folders Here
+          <br><span style="font-size:11px; opacity:0.7;">or click to browse</span>
+        </div>
+        <input type="file" id="datasetFileInput" multiple webkitdirectory class="hidden">
 
-        <section class="panel stack">
-          <h2>Backend Checklist</h2>
-          <p class="note">Shows exactly where a request fails.</p>
-          <div id="checklist" class="checklist"></div>
-          <div class="row" style="margin-top:2px;">
-            <span class="note">Pending means in progress</span>
-            <button id="resetChecksBtn">Reset Checklist</button>
+        <!-- Source Management Tools -->
+        <div id="sourceManagement" class="hidden" style="display:flex; flex-direction:column; gap:8px;">
+          <div class="source-summary" id="sourceSummary"></div>
+
+          <div class="source-toolbar">
+            <div style="display:flex; gap:6px;">
+              <button id="selectAllBtn">Select All</button>
+              <button id="deselectAllBtn">Deselect All</button>
+            </div>
+            <button id="clearAllBtn" style="color:var(--err); border-color:rgba(242, 139, 130, 0.4);">Clear All</button>
           </div>
-        </section>
+        </div>
+
+        <ul id="sourceList" class="source-list"></ul>
+
+        <div style="margin-top: auto;">
+          <input id="datasetNameInput" type="text" placeholder="Dataset alias (optional)"
+            style="margin-bottom:8px; font-size: 12px;">
+          <button id="uploadBtn" style="width: 100%;">Upload Selected to Vault</button>
+          <p id="uploadStatus" class="note" style="text-align: center; margin-top: 8px;">Waiting for files.</p>
+        </div>
+        <input id="extractZipInput" type="checkbox" checked class="hidden">
       </aside>
 
-      <main class="stack">
-        <section class="panel stack">
-          <h2>Learning Curve</h2>
-          <div class="stats">
-            <div class="stat"><div class="k">Last Reward</div><div id="statLast" class="v">-</div></div>
-            <div class="stat"><div class="k">Average Reward</div><div id="statAvg" class="v">-</div></div>
-            <div class="stat"><div class="k">Best Reward</div><div id="statBest" class="v">-</div></div>
+      <!-- PANEL 2: CHAT (Default Active on Mobile) -->
+      <main class="panel mobile-active" id="panelChat" style="background: var(--bg);">
+        <div id="feed" class="feed-container">
+          <div class="chat-bubble system">
+            <strong>System Engine</strong>
+            Investigation environment initialized. Follow the steps on the side panels to configure your runtime, or
+            begin querying natural language cases below.
           </div>
-          <svg id="curveSvg" class="curve" viewBox="0 0 800 220" preserveAspectRatio="none" aria-label="Learning curve"></svg>
-          <p id="curveHint" class="note">Rewards appear after each successful step execution.</p>
-        </section>
+        </div>
 
-        <section class="panel stack">
-          <h2>Step 3: Optional Dataset Upload</h2>
-          <div class="row">
-            <input id="datasetNameInput" type="text" placeholder="Dataset name (optional)">
-            <button id="uploadBtn">Upload Dataset</button>
+        <div style="margin-top: auto; flex-shrink: 0;">
+          <div class="step-label">Step 4</div>
+          <div class="chat-input-wrapper">
+            <textarea id="chatInput"
+              placeholder="What specifically triggers a qui tam lawsuit for employees?"></textarea>
+            <button id="sendBtn" class="primary" title="Send (Ctrl+Enter)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
           </div>
-          <div class="row" style="grid-template-columns: 1fr auto auto;">
-            <input id="datasetFileInput" type="file" accept=".csv,.zip">
-            <label class="small-check"><input id="extractZipInput" type="checkbox" checked> Extract ZIP</label>
-            <label class="small-check"><input id="skipUploadInput" type="checkbox" checked> Skip upload for now</label>
-          </div>
-          <p id="uploadStatus" class="note">No upload yet.</p>
-        </section>
-
-        <section class="panel stack">
-          <h2>Step 4: Ask Investigation Question</h2>
-          <textarea id="chatInput" placeholder="Example: Find Medicare claim contradictions and list suspicious billing patterns."></textarea>
-          <div class="row">
-            <p class="note">Press Send or use Ctrl/Cmd + Enter.</p>
-            <button id="sendBtn" class="primary">Send</button>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="row" style="margin-top:0;">
-            <h2>Chat Feed</h2>
-            <span class="note" id="sessionInfo"></span>
-          </div>
-          <div id="feed" class="feed">
-            <div class="item"><strong>System</strong>Follow steps from top to bottom: key, episode, optional upload, then chat.</div>
-          </div>
-        </section>
+          <p id="statusLine" class="note" style="text-align:center; margin-top:8px;">Ready.</p>
+        </div>
       </main>
+
+      <!-- PANEL 3: STUDIO & INTERNALS -->
+      <aside class="panel" id="panelStudio">
+
+        <!-- STEP 1: CONFIGURATION -->
+        <div class="step-label">Step 1</div>
+        <details id="runtimeDetails" class="collapsible-panel" open>
+          <summary>⚙️ Setup Runtime Parameters</summary>
+          <div class="collapsible-content">
+            <textarea id="objectiveInput" style="min-height: 50px; font-size:12px;"
+              placeholder="Investigation objective">Hyper-focus on Medicare fraud: prioritize beneficiary and claim contradictions.</textarea>
+
+            <input id="apiKeyInput" type="password" placeholder="Env API Key (if required)" style="font-size:12px;">
+            <input id="llmBaseUrlInput" type="text" placeholder="LLM API Base URL" style="font-size:12px;">
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+              <input id="llmModelInput" type="text" placeholder="LLM Model" style="font-size:12px;">
+              <input id="llmApiKeyInput" type="password" placeholder="LLM API Key" style="font-size:12px;">
+            </div>
+
+            <label class="note" style="display:flex; align-items:center; gap:6px; margin-top:4px; cursor:pointer;">
+              <input id="forceHeuristicInput" type="checkbox"> Force heuristic fallback
+            </label>
+            <p id="paramsStatus" class="note" style="margin-top: 4px;">Waiting for LLM parameters (Base URL & Model).
+            </p>
+          </div>
+        </details>
+
+        <!-- STEP 2: INITIALIZE -->
+        <div class="step-label" style="margin-top: 8px;">Step 2</div>
+        <button id="newEpisodeBtn" class="primary" style="width: 100%; margin-bottom: 16px;">Launch New
+          Investigation</button>
+        <hr style="border:none; border-top:1px solid var(--line); width:100%; margin: 8px 0; flex-shrink: 0;">
+
+        <h2 style="margin-top: 8px;">Live RL Training Stats</h2>
+        <div class="stats" style="margin-top: 4px;">
+          <div class="stat">
+            <div class="k">Last</div>
+            <div id="statLast" class="v">-</div>
+          </div>
+          <div class="stat">
+            <div class="k">Avg</div>
+            <div id="statAvg" class="v">-</div>
+          </div>
+          <div class="stat">
+            <div class="k">Best</div>
+            <div id="statBest" class="v">-</div>
+          </div>
+        </div>
+
+        <div class="curve-container">
+          <div id="awaitingRlText" class="awaiting-text">Awaiting RL steps...</div>
+          <svg id="curveSvg" class="curve" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+        </div>
+
+        <h2 style="margin-top: 16px;">Internal Engine Checks</h2>
+        <div id="checklist" class="checklist"></div>
+
+      </aside>
+    </div>
+
+    <!-- Mobile Bottom Navigation Bar -->
+    <nav id="bottomNav" class="bottom-nav">
+      <button class="nav-btn" data-target="panelSources">
+        <svg viewBox="0 0 24 24">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+        <span>Sources</span>
+      </button>
+      <button class="nav-btn active" data-target="panelChat">
+        <svg viewBox="0 0 24 24">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        <span>Chat</span>
+      </button>
+      <button class="nav-btn" data-target="panelStudio">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+          </path>
+        </svg>
+        <span>Studio</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Safety Net Modal -->
+  <div id="confirmModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h3>Clear All Sources?</h3>
+      <p>Are you sure you want to remove all uploaded sources from the staging area? This cannot be undone.</p>
+      <div style="display:flex; gap:12px; justify-content:center;">
+        <button id="cancelClearBtn" style="flex:1;">Cancel</button>
+        <button id="confirmClearBtn" style="flex:1; background:var(--err); color:#000; border:none;">Yes, Clear</button>
+      </div>
     </div>
   </div>
 
   <script>
-    const CHECKS = {
-      auth: "auth_header",
-      reset: "episode_reset",
-      upload: "upload_dataset",
-      nl: "nl_action",
-      step: "step_execute",
+    // --- Mobile Bottom Navigation Logic ---
+    const mobileNavBtns = document.querySelectorAll('.nav-btn');
+    const panels = {
+      panelSources: document.getElementById('panelSources'),
+      panelChat: document.getElementById('panelChat'),
+      panelStudio: document.getElementById('panelStudio')
     };
 
-    const CHECK_LABELS = {
-      [CHECKS.auth]: "Auth Header",
-      [CHECKS.reset]: "Start Episode",
-      [CHECKS.upload]: "Upload Dataset",
-      [CHECKS.nl]: "Generate NL Action",
-      [CHECKS.step]: "Execute Step",
-    };
+    mobileNavBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Reset active states
+        mobileNavBtns.forEach(b => b.classList.remove('active'));
+        Object.values(panels).forEach(p => p.classList.remove('mobile-active'));
 
-    const GUIDE_STEPS = [
-      { id: "guide_auth", title: "Enter credentials and parameters", hint: "Fill API key if required. Optionally set LLM API base URL, model, and key." },
-      { id: "guide_episode", title: "Click Start New Episode", hint: "This initializes the case context for your session." },
-      { id: "guide_upload", title: "Upload dataset (optional)", hint: "Upload CSV or ZIP if you want to enrich analysis. You can skip this." },
-      { id: "guide_chat", title: "Ask Medicare investigation question", hint: "Use natural language. Reward curve updates after each step." },
-    ];
+        // Set new active states
+        btn.classList.add('active');
+        panels[btn.dataset.target].classList.add('mobile-active');
+      });
+    });
+
+    const CHECKS = { auth: "auth_header", reset: "episode_reset", upload: "upload_dataset", nl: "nl_action", step: "step_execute" };
+    const CHECK_LABELS = { [CHECKS.auth]: "Auth Config", [CHECKS.reset]: "Env Reset", [CHECKS.upload]: "Ingest Data", [CHECKS.nl]: "NL Policy Action", [CHECKS.step]: "Step Runtime" };
 
     const state = {
-      endpoints: {
-        reset: "/fraud_hunter/session_reset",
-        step: "/fraud_hunter/session_step",
-        nlAction: "/fraud_hunter/nl_action",
-        upload: "/fraud_hunter/upload_dataset",
-      },
-      sessionId: "",
-      observation: null,
-      busy: false,
-      checks: {},
-      rewards: [],
-      guide: {
-        auth: false,
-        episode: false,
-        upload: false,
-        chat: false,
-      },
+      endpoints: { reset: "/fraud_hunter/session_reset", step: "/fraud_hunter/session_step", nlAction: "/fraud_hunter/nl_action", upload: "/fraud_hunter/upload_dataset" },
+      sessionId: "", observation: null, busy: false, checks: {}, rewards: [], files: []
     };
 
     const nodes = {
-      apiKeyInput: document.getElementById("apiKeyInput"),
-      newEpisodeBtn: document.getElementById("newEpisodeBtn"),
-      clearBtn: document.getElementById("clearBtn"),
-      statusLine: document.getElementById("statusLine"),
-      sessionInfo: document.getElementById("sessionInfo"),
-
-      objectiveInput: document.getElementById("objectiveInput"),
-      llmBaseUrlInput: document.getElementById("llmBaseUrlInput"),
-      llmModelInput: document.getElementById("llmModelInput"),
-      llmApiKeyInput: document.getElementById("llmApiKeyInput"),
-      forceHeuristicInput: document.getElementById("forceHeuristicInput"),
-      paramsStatus: document.getElementById("paramsStatus"),
-
-      guideList: document.getElementById("guideList"),
-
-      checklist: document.getElementById("checklist"),
-      resetChecksBtn: document.getElementById("resetChecksBtn"),
-
-      statLast: document.getElementById("statLast"),
-      statAvg: document.getElementById("statAvg"),
-      statBest: document.getElementById("statBest"),
-      curveSvg: document.getElementById("curveSvg"),
-      curveHint: document.getElementById("curveHint"),
-
-      datasetNameInput: document.getElementById("datasetNameInput"),
-      datasetFileInput: document.getElementById("datasetFileInput"),
-      extractZipInput: document.getElementById("extractZipInput"),
-      skipUploadInput: document.getElementById("skipUploadInput"),
-      uploadBtn: document.getElementById("uploadBtn"),
-      uploadStatus: document.getElementById("uploadStatus"),
-
-      chatInput: document.getElementById("chatInput"),
-      sendBtn: document.getElementById("sendBtn"),
-      feed: document.getElementById("feed"),
+      apiKeyInput: document.getElementById("apiKeyInput"), newEpisodeBtn: document.getElementById("newEpisodeBtn"), clearBtn: document.getElementById("clearBtn"), statusLine: document.getElementById("statusLine"),
+      themeToggle: document.getElementById("themeToggle"),
+      runtimeDetails: document.getElementById("runtimeDetails"), objectiveInput: document.getElementById("objectiveInput"), llmBaseUrlInput: document.getElementById("llmBaseUrlInput"), llmModelInput: document.getElementById("llmModelInput"), llmApiKeyInput: document.getElementById("llmApiKeyInput"), forceHeuristicInput: document.getElementById("forceHeuristicInput"), paramsStatus: document.getElementById("paramsStatus"),
+      checklist: document.getElementById("checklist"), statLast: document.getElementById("statLast"), statAvg: document.getElementById("statAvg"), statBest: document.getElementById("statBest"),
+      curveSvg: document.getElementById("curveSvg"), awaitingRlText: document.getElementById("awaitingRlText"),
+      datasetNameInput: document.getElementById("datasetNameInput"), datasetFileInput: document.getElementById("datasetFileInput"), extractZipInput: document.getElementById("extractZipInput"), uploadBtn: document.getElementById("uploadBtn"), uploadStatus: document.getElementById("uploadStatus"),
+      chatInput: document.getElementById("chatInput"), sendBtn: document.getElementById("sendBtn"), feed: document.getElementById("feed"), dropZone: document.getElementById("dropZone"), sourceList: document.getElementById("sourceList"),
+      sourceManagement: document.getElementById("sourceManagement"), sourceSummary: document.getElementById("sourceSummary"), selectAllBtn: document.getElementById("selectAllBtn"), deselectAllBtn: document.getElementById("deselectAllBtn"), clearAllBtn: document.getElementById("clearAllBtn"),
+      confirmModal: document.getElementById("confirmModal"), cancelClearBtn: document.getElementById("cancelClearBtn"), confirmClearBtn: document.getElementById("confirmClearBtn")
     };
 
-    function now() {
-      return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    // --- Source Management & Drag/Drop Logic ---
+    nodes.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); nodes.dropZone.classList.add('dragover'); });
+    nodes.dropZone.addEventListener('dragleave', () => nodes.dropZone.classList.remove('dragover'));
+    nodes.dropZone.addEventListener('drop', (e) => { e.preventDefault(); nodes.dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+    nodes.dropZone.addEventListener('click', () => nodes.datasetFileInput.click());
+    nodes.datasetFileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+    function handleFiles(fileList) {
+      for (const file of fileList) state.files.push({ file: file, selected: true });
+      renderSources();
     }
 
-    function addFeed(title, body) {
+    function renderSources() {
+      nodes.sourceList.innerHTML = '';
+      const typeCounts = {};
+
+      if (state.files.length === 0) {
+        nodes.sourceManagement.classList.add('hidden');
+        nodes.uploadStatus.textContent = 'Waiting for files.';
+        return;
+      }
+
+      nodes.sourceManagement.classList.remove('hidden');
+
+      state.files.forEach((item, index) => {
+        let ext = item.file.name.split('.').pop().toUpperCase();
+        if (!item.file.name.includes('.')) ext = 'UNKNOWN';
+        typeCounts[ext] = (typeCounts[ext] || 0) + 1;
+
+        const li = document.createElement('li');
+        li.className = 'source-item';
+        let name = item.file.name;
+        if (name.length > 25) name = name.substring(0, 22) + '...';
+
+        li.innerHTML = `
+          <div style="display:flex; align-items:center; flex-grow:1; overflow:hidden;">
+            <input type="checkbox" class="source-cb" data-index="${index}" ${item.selected ? 'checked' : ''}>
+            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">📄 ${name}</span>
+          </div>
+          <button class="delete-btn" data-index="${index}" title="Remove Source">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        `;
+        nodes.sourceList.appendChild(li);
+      });
+
+      const typesDisplay = Object.entries(typeCounts)
+        .map(([ext, count]) => `<span style="color:var(--text); font-weight:600;">${ext}:</span> ${count}`)
+        .join(' &nbsp;|&nbsp; ');
+
+      nodes.sourceSummary.innerHTML = `<div style="margin-bottom:4px;"><strong>Data Type Breakdown</strong></div><div>${typesDisplay}</div><div style="margin-top:6px; font-size:11px; opacity:0.8;">Total Files: ${state.files.length}</div>`;
+      nodes.uploadStatus.textContent = `${state.files.filter(f => f.selected).length} out of ${state.files.length} staged for upload.`;
+
+      document.querySelectorAll('.source-cb').forEach(cb => { cb.addEventListener('change', (e) => { state.files[e.target.dataset.index].selected = e.target.checked; renderSources(); }); });
+      document.querySelectorAll('.delete-btn').forEach(btn => { btn.addEventListener('click', (e) => { state.files.splice(parseInt(e.target.dataset.index), 1); renderSources(); }); });
+    }
+
+    nodes.selectAllBtn.addEventListener('click', () => { state.files.forEach(f => f.selected = true); renderSources(); });
+    nodes.deselectAllBtn.addEventListener('click', () => { state.files.forEach(f => f.selected = false); renderSources(); });
+    nodes.clearAllBtn.addEventListener('click', () => nodes.confirmModal.classList.remove('hidden'));
+    nodes.cancelClearBtn.addEventListener('click', () => nodes.confirmModal.classList.add('hidden'));
+    nodes.confirmClearBtn.addEventListener('click', () => { state.files = []; renderSources(); nodes.confirmModal.classList.add('hidden'); });
+
+    // --- Core Logic ---
+    function now() { return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+
+    function addFeed(role, body) {
       const div = document.createElement("div");
-      div.className = "item";
-      div.innerHTML = `<strong>${title} · ${now()}</strong>${String(body || "")}`;
+      div.className = `chat-bubble ${role === 'You' ? 'user' : 'system'}`;
+      let roleLabel = role === 'You' ? 'Qui Tam Fraud Investigator' : role;
+      div.innerHTML = `<strong>${roleLabel} <span style="text-transform:none; font-weight:normal; opacity:0.6; margin-left:4px;">${now()}</span></strong>${String(body || "").replace(/\n/g, '<br>')}`;
       nodes.feed.appendChild(div);
       nodes.feed.scrollTop = nodes.feed.scrollHeight;
     }
 
     function setBusy(flag) {
       state.busy = flag;
-      nodes.newEpisodeBtn.disabled = flag;
-      nodes.uploadBtn.disabled = flag;
-      nodes.sendBtn.disabled = flag;
-      nodes.resetChecksBtn.disabled = flag;
-    }
-
-    function renderGuide() {
-      const firstUndone = !state.guide.auth ? 0 : !state.guide.episode ? 1 : !state.guide.upload ? 2 : !state.guide.chat ? 3 : -1;
-      nodes.guideList.innerHTML = GUIDE_STEPS.map((step, idx) => {
-        const done = idx === 0 ? state.guide.auth : idx === 1 ? state.guide.episode : idx === 2 ? state.guide.upload : state.guide.chat;
-        const active = idx === firstUndone;
-        return [
-          `<li class="guide-item ${done ? "done" : ""} ${active ? "active" : ""}">`,
-          `<span class="guide-step">${done ? "OK" : String(idx + 1)}</span>`,
-          "<div>",
-          `<div>${step.title}</div>`,
-          `<div class="mini">${step.hint}</div>`,
-          "</div>",
-          "</li>",
-        ].join("");
-      }).join("");
+      nodes.newEpisodeBtn.disabled = flag; nodes.uploadBtn.disabled = flag; nodes.sendBtn.disabled = flag; nodes.chatInput.disabled = flag;
     }
 
     function resetChecks() {
-      state.checks = {
-        [CHECKS.auth]: { status: "idle", detail: "No request yet." },
-        [CHECKS.reset]: { status: "idle", detail: "No request yet." },
-        [CHECKS.upload]: { status: "idle", detail: "No request yet." },
-        [CHECKS.nl]: { status: "idle", detail: "No request yet." },
-        [CHECKS.step]: { status: "idle", detail: "No request yet." },
-      };
+      state.checks = { [CHECKS.auth]: { status: "idle", detail: "Waiting..." }, [CHECKS.reset]: { status: "idle", detail: "Waiting..." }, [CHECKS.upload]: { status: "idle", detail: "Waiting..." }, [CHECKS.nl]: { status: "idle", detail: "Waiting..." }, [CHECKS.step]: { status: "idle", detail: "Waiting..." } };
       renderChecklist();
-    }
-
-    function badgeFor(status) {
-      if (status === "pending") return "...";
-      if (status === "ok") return "OK";
-      if (status === "fail") return "X";
-      return "-";
     }
 
     function renderChecklist() {
       const order = [CHECKS.auth, CHECKS.reset, CHECKS.upload, CHECKS.nl, CHECKS.step];
       nodes.checklist.innerHTML = order.map((key) => {
-        const row = state.checks[key] || { status: "idle", detail: "No request yet." };
-        const css = row.status === "pending" || row.status === "ok" || row.status === "fail" ? row.status : "";
-        return [
-          `<div class="check-item ${css}">`,
-          `<span class="badge">${badgeFor(row.status)}</span>`,
-          "<div>",
-          `<div class="check-label">${CHECK_LABELS[key]}</div>`,
-          `<div class="check-meta">${row.detail || ""}</div>`,
-          "</div>",
-          "</div>",
-        ].join("");
+        const row = state.checks[key] || { status: "idle", detail: "Waiting..." };
+        const sym = row.status === 'ok' ? '✓' : (row.status === 'fail' ? '✕' : (row.status === 'pending' ? '...' : '-'));
+        return `<div class="check-item ${row.status}"><div class="badge">${sym}</div><div><div style="font-weight:600;">${CHECK_LABELS[key]}</div><div class="check-meta">${row.detail || ""}</div></div></div>`;
       }).join("");
     }
 
-    function setCheck(key, status, detail) {
-      state.checks[key] = { status, detail };
-      renderChecklist();
-    }
+    function setCheck(key, status, detail) { state.checks[key] = { status, detail }; renderChecklist(); }
 
     function updateParamStatus() {
-      const base = (nodes.llmBaseUrlInput.value || "").trim();
-      const model = (nodes.llmModelInput.value || "").trim();
+      const base = (nodes.llmBaseUrlInput.value || "").trim(), model = (nodes.llmModelInput.value || "").trim();
       if (nodes.forceHeuristicInput.checked) {
         nodes.paramsStatus.className = "note";
-        nodes.paramsStatus.textContent = "Heuristic mode forced. LLM will be skipped.";
+        nodes.paramsStatus.textContent = "Heuristic fallback active.";
         return;
       }
       if (base && model) {
         nodes.paramsStatus.className = "note ok";
-        nodes.paramsStatus.textContent = "LLM API base URL and model configured. Next send uses these settings.";
+        nodes.paramsStatus.textContent = "LLM linked.";
       } else {
         nodes.paramsStatus.className = "note";
-        nodes.paramsStatus.textContent = "LLM parameters incomplete. Heuristic fallback may be used.";
+        nodes.paramsStatus.textContent = "Waiting for LLM Base URL & Model.";
       }
     }
 
@@ -607,246 +1169,126 @@
       const h = {};
       if (includeJson) h["Content-Type"] = "application/json";
       if (state.sessionId) h["x-session-id"] = state.sessionId;
-
       const key = (nodes.apiKeyInput.value || "").trim();
-      if (key) {
-        h["x-api-key"] = key;
-        setCheck(CHECKS.auth, "ok", "x-api-key header included.");
-      } else {
-        setCheck(CHECKS.auth, "pending", "No API key provided. Works only if auth is disabled.");
-      }
-
-      state.guide.auth = key.length > 0 || true;
-      renderGuide();
+      if (key) { h["x-api-key"] = key; setCheck(CHECKS.auth, "ok", "x-api-key injected"); } else { setCheck(CHECKS.auth, "pending", "No external API key"); }
       return h;
     }
 
     async function postJson(path, payload, checkKey) {
-      if (checkKey) setCheck(checkKey, "pending", `POST ${path} started.`);
+      if (checkKey) setCheck(checkKey, "pending", `POST ${path}`);
       let resp;
-      try {
-        resp = await fetch(path, {
-          method: "POST",
-          headers: authHeaders(true),
-          body: JSON.stringify(payload),
-        });
-      } catch (err) {
-        if (checkKey) setCheck(checkKey, "fail", (err && err.message) ? err.message : "Network error");
-        throw err;
+      try { resp = await fetch(path, { method: "POST", headers: authHeaders(true), body: JSON.stringify(payload) }); } catch (err) {
+        if (checkKey) setCheck(checkKey, "fail", err.message || "Network error"); throw err;
       }
-
       const text = await resp.text();
-      let data = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        data = { raw: text };
-      }
-
+      let data = text ? JSON.parse(text) : {};
       if (!resp.ok) {
-        const detail = (data && data.detail) ? data.detail : `HTTP ${resp.status}`;
-        if (checkKey) setCheck(checkKey, "fail", detail);
-        throw new Error(detail);
+        const detail = data.detail || `HTTP ${resp.status}`;
+        if (checkKey) setCheck(checkKey, "fail", detail); throw new Error(detail);
       }
-
       if (checkKey) setCheck(checkKey, "ok", `HTTP ${resp.status}`);
       return data;
     }
 
     function buildLlmOverride() {
-      if (nodes.forceHeuristicInput.checked) {
-        return { enabled: false };
-      }
-      const base = (nodes.llmBaseUrlInput.value || "").trim();
-      const model = (nodes.llmModelInput.value || "").trim();
-      const apiKey = (nodes.llmApiKeyInput.value || "").trim();
+      if (nodes.forceHeuristicInput.checked) return { enabled: false };
       const llm = {};
-      if (base) llm.base_url = base;
-      if (model) llm.model = model;
-      if (apiKey) llm.api_key = apiKey;
+      if (nodes.llmBaseUrlInput.value) llm.base_url = nodes.llmBaseUrlInput.value;
+      if (nodes.llmModelInput.value) llm.model = nodes.llmModelInput.value;
+      if (nodes.llmApiKeyInput.value) llm.api_key = nodes.llmApiKeyInput.value;
       return Object.keys(llm).length > 0 ? llm : null;
     }
 
     function renderCurve() {
       const svg = nodes.curveSvg;
       const rewards = state.rewards;
+
       if (!rewards.length) {
-        svg.innerHTML = '<text x="20" y="30" fill="#607388" font-size="14">No reward points yet</text>';
-        nodes.statLast.textContent = "-";
-        nodes.statAvg.textContent = "-";
-        nodes.statBest.textContent = "-";
+        nodes.awaitingRlText.style.display = 'flex';
+        svg.innerHTML = '';
         return;
       }
 
-      const min = Math.min(...rewards);
-      const max = Math.max(...rewards);
-      const range = Math.max(max - min, 1e-6);
-      const width = 800;
-      const height = 220;
-      const pad = 20;
-      const innerW = width - pad * 2;
-      const innerH = height - pad * 2;
+      nodes.awaitingRlText.style.display = 'none';
+      const min = Math.min(...rewards), max = Math.max(...rewards), range = Math.max(max - min, 1e-6);
+      const w = 800, h = 220, pad = 10, innerW = w - pad * 2, innerH = h - pad * 2;
+      const points = rewards.map((r, i) => `${pad + (rewards.length === 1 ? innerW / 2 : (i / (rewards.length - 1)) * innerW)},${pad + (1 - ((r - min) / range)) * innerH}`).join(" ");
 
-      const points = rewards.map((r, i) => {
-        const x = pad + (rewards.length === 1 ? innerW / 2 : (i / (rewards.length - 1)) * innerW);
-        const y = pad + (1 - ((r - min) / range)) * innerH;
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
-      }).join(" ");
+      svg.innerHTML = `<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="var(--chart-grid)" /><line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="var(--chart-grid)" /><polyline fill="none" stroke="var(--chart-line)" stroke-width="3" points="${points}" />`;
 
-      const avg = rewards.reduce((a, b) => a + b, 0) / rewards.length;
-      const last = rewards[rewards.length - 1];
-      const best = Math.max(...rewards);
-
-      svg.innerHTML = [
-        `<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#d7e0ec" />`,
-        `<line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#d7e0ec" />`,
-        `<polyline fill="none" stroke="#1467c2" stroke-width="3" points="${points}" />`,
-        `<text x="${pad}" y="${pad - 6}" fill="#607388" font-size="12">max ${max.toFixed(3)}</text>`,
-        `<text x="${pad}" y="${height - 4}" fill="#607388" font-size="12">min ${min.toFixed(3)}</text>`,
-      ].join("");
-
-      nodes.statLast.textContent = last.toFixed(3);
-      nodes.statAvg.textContent = avg.toFixed(3);
-      nodes.statBest.textContent = best.toFixed(3);
+      nodes.statLast.textContent = rewards[rewards.length - 1].toFixed(3);
+      nodes.statAvg.textContent = (rewards.reduce((a, b) => a + b, 0) / rewards.length).toFixed(3);
+      nodes.statBest.textContent = max.toFixed(3);
     }
 
     async function ensureEpisode() {
       if (state.observation) return;
       const reset = await postJson(state.endpoints.reset, {}, CHECKS.reset);
       state.observation = reset.observation || {};
-      const info = state.observation.info || {};
-      nodes.statusLine.className = "note ok";
-      nodes.statusLine.textContent = `Episode ready: ${info.case_id || "unknown"}`;
-      addFeed("Episode", state.observation.case_brief || "Episode reset complete.");
-      state.guide.episode = true;
-      renderGuide();
+      nodes.statusLine.className = "note ok"; nodes.statusLine.textContent = `Active Case: ${state.observation.info?.case_id || "ENV-001"}`;
+      addFeed("Environment", state.observation.case_brief || "Initialized new case environment.");
     }
 
     async function newEpisode() {
       setBusy(true);
+      nodes.runtimeDetails.removeAttribute('open');
       try {
         state.observation = null;
         await ensureEpisode();
       } catch (err) {
         nodes.statusLine.className = "note err";
-        nodes.statusLine.textContent = (err && err.message) ? err.message : "Reset failed";
-        addFeed("Error", nodes.statusLine.textContent);
+        nodes.statusLine.textContent = err.message || "Reset failed";
+        addFeed("System Error", nodes.statusLine.textContent);
       } finally {
         setBusy(false);
       }
     }
 
     async function uploadDataset() {
-      const fileInput = nodes.datasetFileInput;
-      if (!fileInput.files || fileInput.files.length === 0) {
-        setCheck(CHECKS.upload, "fail", "No file selected.");
-        nodes.uploadStatus.className = "note err";
-        nodes.uploadStatus.textContent = "Choose a CSV or ZIP file first.";
-        addFeed("Upload", "Choose a CSV or ZIP file first.");
-        return;
-      }
+      const selectedFiles = state.files.filter(f => f.selected).map(f => f.file);
+      if (selectedFiles.length === 0) { setCheck(CHECKS.upload, "fail", "No files selected."); return; }
 
-      setBusy(true);
-      setCheck(CHECKS.upload, "pending", "Uploading dataset...");
+      setBusy(true); setCheck(CHECKS.upload, "pending", "Uploading...");
       try {
         const form = new FormData();
-        form.append("file", fileInput.files[0]);
-        const ds = (nodes.datasetNameInput.value || "").trim();
-        if (ds) form.append("dataset_name", ds);
+        selectedFiles.forEach(f => form.append("file", f));
+
+        if (nodes.datasetNameInput.value) form.append("dataset_name", nodes.datasetNameInput.value);
         form.append("extract_zip", nodes.extractZipInput.checked ? "true" : "false");
 
-        const resp = await fetch(state.endpoints.upload, {
-          method: "POST",
-          headers: authHeaders(false),
-          body: form,
-        });
+        const resp = await fetch(state.endpoints.upload, { method: "POST", headers: authHeaders(false), body: form });
+        const text = await resp.text(); const data = text ? JSON.parse(text) : {};
+        if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
 
-        const text = await resp.text();
-        let data = {};
-        try {
-          data = text ? JSON.parse(text) : {};
-        } catch {
-          data = { raw: text };
-        }
-
-        if (!resp.ok) {
-          throw new Error((data && data.detail) ? data.detail : `HTTP ${resp.status}`);
-        }
-
-        setCheck(CHECKS.upload, "ok", `HTTP ${resp.status} | extracted=${data.extracted_count || 0}`);
-        nodes.uploadStatus.className = "note ok";
-        nodes.uploadStatus.textContent = `Uploaded ${data.dataset || "dataset"}, extracted: ${data.extracted_count || 0}.`;
-        addFeed("Upload", `${data.stored_file || "uploaded"}\nExtracted: ${data.extracted_count || 0}`);
-        state.guide.upload = true;
-        renderGuide();
+        const uploadedCount = Number(data.file_count || selectedFiles.length);
+        setCheck(CHECKS.upload, "ok", `Uploaded=${uploadedCount} | Extracted=${data.extracted_count || 0}`);
+        nodes.uploadStatus.className = "note ok"; nodes.uploadStatus.textContent = `Vault updated: ${data.extracted_count || 0} entities parsed.`;
+        addFeed("Data Vault", `Batch Uploaded: ${uploadedCount} file(s)\nExtracted nodes: ${data.extracted_count || 0}`);
       } catch (err) {
-        const message = (err && err.message) ? err.message : "Upload failed";
-        setCheck(CHECKS.upload, "fail", message);
-        nodes.uploadStatus.className = "note err";
-        nodes.uploadStatus.textContent = message;
-        addFeed("Upload Error", message);
-      } finally {
-        setBusy(false);
-      }
+        setCheck(CHECKS.upload, "fail", err.message); nodes.uploadStatus.className = "note err"; nodes.uploadStatus.textContent = err.message; addFeed("System Error", `Upload failed: ${err.message}`);
+      } finally { setBusy(false); }
     }
 
     async function sendChat() {
-      const msg = (nodes.chatInput.value || "").trim();
-      if (!msg) return;
-
-      setBusy(true);
-      addFeed("You", msg);
-      nodes.chatInput.value = "";
+      const msg = nodes.chatInput.value.trim(); if (!msg) return;
+      setBusy(true); addFeed("You", msg); nodes.chatInput.value = ""; nodes.chatInput.style.height = 'auto';
 
       try {
         await ensureEpisode();
-
-        const objective = (nodes.objectiveInput.value || "").trim() || "Investigate Medicare fraud and summarize evidence.";
-        const payload = {
-          observation: state.observation,
-          objective,
-          user_message: msg,
-        };
-
-        const llm = buildLlmOverride();
-        if (llm) payload.llm = llm;
+        const payload = { observation: state.observation, objective: nodes.objectiveInput.value.trim() || "Investigate Fraud", user_message: msg };
+        const llm = buildLlmOverride(); if (llm) payload.llm = llm;
 
         const generated = await postJson(state.endpoints.nlAction, payload, CHECKS.nl);
-        const action = generated.action || {};
-        const provider = String(generated.provider || "unknown");
-        const llmError = generated.llm_error ? `\nLLM error: ${String(generated.llm_error)}` : "";
-        addFeed("Agent Action", `Provider: ${provider}${llmError}\n\n${JSON.stringify(action, null, 2)}`);
+        const stepped = await postJson(state.endpoints.step, { action: generated.action || {} }, CHECKS.step);
 
-        const stepped = await postJson(state.endpoints.step, { action }, CHECKS.step);
         state.observation = stepped.observation || state.observation;
+        const reward = Number(stepped.reward || 0); state.rewards.push(reward); renderCurve();
 
-        const obs = stepped.observation || {};
-        const reward = Number(stepped.reward || 0);
-        state.rewards.push(reward);
-        renderCurve();
+        const feedback = state.observation.grader_feedback || ""; const output = state.observation.tool_output || "Analysis completed.";
+        addFeed("Agent Engine", `<strong>Action via ${generated.provider || "System"}</strong>${output}\n\n<em style="color:var(--muted-foreground); font-size:11px;">Reward signal: ${reward.toFixed(3)} | ${feedback}</em>`);
 
-        const feedback = obs.grader_feedback || "No grader feedback.";
-        const output = obs.tool_output || "No tool output.";
-        addFeed("Result", `Reward: ${reward.toFixed(3)}\n${feedback}\n\n${output}`);
-
-        state.guide.chat = true;
-        if (nodes.skipUploadInput.checked) {
-          state.guide.upload = true;
-        }
-        renderGuide();
-
-        if (stepped.done) {
-          addFeed("Episode", "Episode completed. Starting a new episode on next message.");
-          state.observation = null;
-        }
-      } catch (err) {
-        const message = (err && err.message) ? err.message : "Chat action failed";
-        nodes.statusLine.className = "note err";
-        nodes.statusLine.textContent = message;
-        addFeed("Error", message);
-      } finally {
-        setBusy(false);
-      }
+        if (stepped.done) { addFeed("Environment", "Case concluded based on terminal state. Next query starts new investigation."); state.observation = null; }
+      } catch (err) { nodes.statusLine.className = "note err"; nodes.statusLine.textContent = err.message || "Action failed"; addFeed("System Error", err.message); } finally { setBusy(false); nodes.chatInput.focus(); }
     }
 
     async function loadRuntimeConfig() {
@@ -854,11 +1296,14 @@
         const resp = await fetch("/ui/config", { cache: "no-store" });
         if (!resp.ok) return;
         const cfg = await resp.json();
+
         const ep = cfg.endpoints || {};
         if (ep.session_reset) state.endpoints.reset = String(ep.session_reset);
         if (ep.session_step) state.endpoints.step = String(ep.session_step);
         if (ep.nl_action) state.endpoints.nlAction = String(ep.nl_action);
         if (ep.upload_dataset) state.endpoints.upload = String(ep.upload_dataset);
+        if (ep.metrics) state.endpoints.metrics = String(ep.metrics);
+        if (ep.metrics_history) state.endpoints.metrics_history = String(ep.metrics_history);
 
         const agent = cfg.agent || {};
         if (agent.base_url && !nodes.llmBaseUrlInput.value) {
@@ -872,51 +1317,70 @@
       }
     }
 
-    nodes.newEpisodeBtn.addEventListener("click", newEpisode);
-    nodes.uploadBtn.addEventListener("click", uploadDataset);
-    nodes.sendBtn.addEventListener("click", sendChat);
-    nodes.chatInput.addEventListener("keydown", (ev) => {
-      if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
-        sendChat();
+    async function initMetrics() {
+      if (state.endpoints.metrics_history) {
+        try {
+          const resp = await fetch(state.endpoints.metrics_history);
+          if (resp.ok) {
+            const history = await resp.json();
+            state.rewards = history.map(h => Number(h.episode_reward || 0));
+            renderCurve();
+          }
+        } catch (e) { console.warn("Failed to load metrics history", e); }
       }
-    });
-    nodes.clearBtn.addEventListener("click", () => {
-      nodes.feed.innerHTML = '<div class="item"><strong>System</strong>Feed cleared.</div>';
-    });
-    nodes.resetChecksBtn.addEventListener("click", () => {
-      resetChecks();
-      addFeed("Checklist", "Checklist reset to idle state.");
-    });
 
-    [
-      nodes.llmBaseUrlInput,
-      nodes.llmModelInput,
-      nodes.llmApiKeyInput,
-      nodes.forceHeuristicInput,
-      nodes.objectiveInput,
-      nodes.apiKeyInput,
-      nodes.skipUploadInput,
-    ].forEach((node) => {
-      node.addEventListener("input", () => {
-        updateParamStatus();
-        renderGuide();
-      });
-      node.addEventListener("change", () => {
-        updateParamStatus();
-        renderGuide();
-      });
-    });
+      if (state.endpoints.metrics) {
+        const source = new EventSource(state.endpoints.metrics);
+        source.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.episode_reward !== undefined) {
+              state.rewards.push(Number(data.episode_reward));
+              if (state.rewards.length > 100) state.rewards.shift();
+              renderCurve();
+            }
+          } catch (err) { console.error("SSE parse error", err); }
+        };
+        source.onerror = () => {
+          console.warn("Metrics SSE connection lost. Retrying...");
+        };
+      }
+    }
+
+    nodes.newEpisodeBtn.addEventListener("click", newEpisode); nodes.uploadBtn.addEventListener("click", uploadDataset); nodes.sendBtn.addEventListener("click", sendChat);
+    nodes.chatInput.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendChat(); });
+    nodes.chatInput.addEventListener('input', function () { this.style.height = 'auto'; this.style.height = (this.scrollHeight) + 'px'; });
+    nodes.clearBtn.addEventListener("click", () => nodes.feed.innerHTML = '');
+
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('fraud_hunter_theme', isDark ? 'dark' : 'light');
+      updateThemeIcon(isDark);
+    }
+
+    // Icon animation is CSS-driven via html.dark class — no JS needed.
+    function updateThemeIcon(_isDark) {}
+
+    nodes.themeToggle.addEventListener("click", toggleTheme);
 
     (async () => {
-      state.sessionId = `medicare-ui-${Math.random().toString(36).slice(2, 12)}`;
-      nodes.sessionInfo.textContent = `Session: ${state.sessionId}`;
-      addFeed("Session", `Using HTTP session id: ${state.sessionId}`);
+      // Initial theme setup
+      const savedTheme = localStorage.getItem('fraud_hunter_theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const startDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+      
+      if (startDark) document.documentElement.classList.add('dark');
+      updateThemeIcon(startDark);
+
+      state.sessionId = `qui-tam-fraud-investigator-${Math.random().toString(36).slice(2, 10)}`;
       await loadRuntimeConfig();
+      await initMetrics();
       resetChecks();
-      renderGuide();
       updateParamStatus();
       renderCurve();
+      renderSources();
     })();
   </script>
 </body>
+
 </html>
