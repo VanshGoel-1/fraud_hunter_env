@@ -36,25 +36,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from fraud_hunter_env.npi_utils import generate_valid_npi
+
 from .pdf_evidence import ClaimEvidence, render_claim_pdf
-
-
-# ── NPI Generation (valid 10-digit Luhn) ──────────────────────────────────────
-
-def _generate_valid_npi(rng: random.Random) -> str:
-    """Generate a valid 10-digit NPI with Luhn check digit (prefix 80840)."""
-    base = "".join([str(rng.randint(0, 9)) for _ in range(9)])
-    full = "80840" + base
-    total = 0
-    for i, ch in enumerate(reversed(full)):
-        n = int(ch)
-        if i % 2 == 0:
-            n *= 2
-            if n > 9:
-                n -= 9
-        total += n
-    check = (10 - (total % 10)) % 10
-    return base + str(check)
 
 
 # ── Benford & Pareto sampling ────────────────────────────────────────────────
@@ -406,7 +390,7 @@ def _plant_background(cur, rng: random.Random, tier: int):
                 f"{rng.choice(['Medical','Health','Clinical','Wellness'])} "
                 f"{rng.choice(['LLC','Corp','Inc','Ltd'])} {i}")
         state = rng.choice(_STATES)
-        npi = _generate_valid_npi(rng)
+        npi = generate_valid_npi(rng)
         cur.execute("INSERT INTO corporate_registry VALUES (?,?,?,?,?,?,?,?)",
                     (eid, name, f"TX-{1000+i}", None, f"U_L{i:03d}",
                      _rand_date(rng, "2010-01-01", "2023-12-31"), state, npi))
@@ -441,7 +425,7 @@ def _plant_background(cur, rng: random.Random, tier: int):
                      rng.choice(_HCPCS_CODES), amt, rng.choice(_ICD9_CODES)))
 
     # PDE background noise — many providers, few scripts each, common drugs.
-    legit_prescriber_npis = [_generate_valid_npi(rng) for _ in range(n_pde_providers)]
+    legit_prescriber_npis = [generate_valid_npi(rng) for _ in range(n_pde_providers)]
     pde_counter = 0
     for npi in legit_prescriber_npis:
         for _ in range(rng.randint(5, 15)):
@@ -507,7 +491,7 @@ def _plant_fraud(
                 f"{'LLC' if layer < shell_depth - 1 else 'Corp'}")
         state = rng.choice(_STATES)
         is_terminal = layer == shell_depth - 1
-        npi = _generate_valid_npi(rng) if is_terminal else None
+        npi = generate_valid_npi(rng) if is_terminal else None
         if is_terminal:
             fraud_entity_npi = npi
         cur.execute("INSERT INTO corporate_registry VALUES (?,?,?,?,?,?,?,?)",
@@ -524,7 +508,7 @@ def _plant_fraud(
 
     # ── 2. Fraud provider (the doctor) ──────────────────────────────────────
     fraud_prov_name = rng.choice(_FRAUD_DOCTORS)
-    fraud_npi = _generate_valid_npi(rng)
+    fraud_npi = generate_valid_npi(rng)
     cur.execute("INSERT INTO ground_truth VALUES (?,?)",
                 ("entity", json.dumps(
                     {"name": fraud_prov_name, "kind": "provider", "npi": fraud_npi})))
