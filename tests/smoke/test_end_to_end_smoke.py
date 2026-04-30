@@ -4,28 +4,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fraud_hunter_env.server.app import app
-
-
-def _post_json(client: TestClient, path: str, payload: dict | None = None) -> dict:
-    response = client.post(path, json=payload or {})
-    response.raise_for_status()
-    return response.json()
-
-
-def _step_json(client: TestClient, action: dict) -> dict:
-    response = client.post("/step", json={"action": action})
-    assert response.status_code == 200, response.text
-    payload = response.json()
-    assert set(payload.keys()) == {"observation", "reward", "done"}
-    return payload
+from fraud_hunter_env.server.http_contract import post_testclient_json, step_testclient_json
 
 
 @pytest.mark.smoke
 def test_case_brief_documents_contradiction_contract_and_code_act_tooling():
     client = TestClient(app)
 
-    _post_json(client, "/fraud_hunter/seed_range", {"seed_min": None, "seed_max": None})
-    reset_payload = _post_json(client, "/reset")
+    post_testclient_json(client, "/fraud_hunter/seed_range", {"seed_min": None, "seed_max": None})
+    reset_payload = post_testclient_json(client, "/reset")
 
     case_brief = (((reset_payload or {}).get("observation") or {}).get("case_brief") or "")
 
@@ -38,8 +25,8 @@ def test_case_brief_documents_contradiction_contract_and_code_act_tooling():
 def test_http_smoke_for_critical_actions_and_multimodal_payload():
     client = TestClient(app)
 
-    _post_json(client, "/fraud_hunter/seed_range", {"seed_min": 8001, "seed_max": 10000})
-    _post_json(client, "/reset")
+    post_testclient_json(client, "/fraud_hunter/seed_range", {"seed_min": 8001, "seed_max": 10000})
+    post_testclient_json(client, "/reset")
 
     pdf_path = "scanned_claims/doc_claim.pdf"
 
@@ -81,7 +68,7 @@ def test_http_smoke_for_critical_actions_and_multimodal_payload():
 
     ocr_payload = None
     for action in actions:
-        payload = _step_json(client, action)
+        payload = step_testclient_json(client, action)
         observation = payload["observation"]
         assert "base64_document" in observation
         assert "grader_feedback" in observation
@@ -98,10 +85,10 @@ def test_http_smoke_for_critical_actions_and_multimodal_payload():
 def test_agentic_recall_is_not_gameable_by_sql_string_literals():
     client = TestClient(app)
 
-    _post_json(client, "/fraud_hunter/seed_range", {"seed_min": None, "seed_max": None})
-    _post_json(client, "/reset")
+    post_testclient_json(client, "/fraud_hunter/seed_range", {"seed_min": None, "seed_max": None})
+    post_testclient_json(client, "/reset")
 
-    payload = _step_json(
+    payload = step_testclient_json(
         client,
         {
             "kind": "sql_query",
@@ -118,24 +105,24 @@ def test_agentic_recall_is_not_gameable_by_sql_string_literals():
 def test_seed_split_respects_train_and_eval_ranges_over_http():
     client = TestClient(app)
 
-    _post_json(client, "/fraud_hunter/seed_range", {"seed_min": 0, "seed_max": 8000})
+    post_testclient_json(client, "/fraud_hunter/seed_range", {"seed_min": 0, "seed_max": 8000})
     train_range = client.get("/fraud_hunter/seed_range")
     train_range.raise_for_status()
     assert train_range.json()["seed_min"] == 0
     assert train_range.json()["seed_max"] == 8000
 
-    train_reset = _post_json(client, "/reset")
+    train_reset = post_testclient_json(client, "/reset")
     train_info = (((train_reset or {}).get("observation") or {}).get("info") or {})
     assert "case_id" in train_info
 
     # Scoped ranges are immutable once pinned unless explicitly cleared.
-    _post_json(client, "/fraud_hunter/seed_range", {"seed_min": None, "seed_max": None})
-    _post_json(client, "/fraud_hunter/seed_range", {"seed_min": 8001, "seed_max": 10000})
+    post_testclient_json(client, "/fraud_hunter/seed_range", {"seed_min": None, "seed_max": None})
+    post_testclient_json(client, "/fraud_hunter/seed_range", {"seed_min": 8001, "seed_max": 10000})
     eval_range = client.get("/fraud_hunter/seed_range")
     eval_range.raise_for_status()
     assert eval_range.json()["seed_min"] == 8001
     assert eval_range.json()["seed_max"] == 10000
 
-    eval_reset = _post_json(client, "/reset")
+    eval_reset = post_testclient_json(client, "/reset")
     eval_info = (((eval_reset or {}).get("observation") or {}).get("info") or {})
     assert "case_id" in eval_info

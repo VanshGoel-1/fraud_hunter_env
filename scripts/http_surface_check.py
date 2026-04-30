@@ -15,50 +15,15 @@ from pathlib import Path
 # from the repository root without requiring manual PYTHONPATH exports.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import requests
 from fastapi.testclient import TestClient
 
 from fraud_hunter_env.server.app import app
-
-
-def _post_remote(base_url: str, path: str, payload: dict | None = None) -> dict:
-    response = requests.post(f"{base_url}{path}", json=payload or {}, timeout=10)
-    response.raise_for_status()
-    return response.json()
-
-
-def _step_remote(base_url: str, action: dict) -> dict:
-    response = requests.post(f"{base_url}/step", json={"action": action}, timeout=10)
-    if response.status_code == 422:
-        raise RuntimeError(f"422 from /step for action {action['kind']}: {response.text}")
-    response.raise_for_status()
-    payload = response.json()
-    expected = {"observation", "reward", "done"}
-    if set(payload.keys()) != expected:
-        raise RuntimeError(
-            f"Unexpected /step payload keys for action {action['kind']}: {sorted(payload.keys())}"
-        )
-    return payload
-
-
-def _post_local(client: TestClient, path: str, payload: dict | None = None) -> dict:
-    response = client.post(path, json=payload or {})
-    response.raise_for_status()
-    return response.json()
-
-
-def _step_local(client: TestClient, action: dict) -> dict:
-    response = client.post("/step", json={"action": action})
-    if response.status_code == 422:
-        raise RuntimeError(f"422 from /step for action {action['kind']}: {response.text}")
-    response.raise_for_status()
-    payload = response.json()
-    expected = {"observation", "reward", "done"}
-    if set(payload.keys()) != expected:
-        raise RuntimeError(
-            f"Unexpected /step payload keys for action {action['kind']}: {sorted(payload.keys())}"
-        )
-    return payload
+from fraud_hunter_env.server.http_contract import (
+    post_requests_json,
+    post_testclient_json,
+    step_requests_json,
+    step_testclient_json,
+)
 
 
 def main() -> int:
@@ -70,12 +35,12 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.remote:
-        post = lambda path, payload=None: _post_remote(args.base_url, path, payload)
-        step = lambda action: _step_remote(args.base_url, action)
+        post = lambda path, payload=None: post_requests_json(args.base_url, path, payload)
+        step = lambda action: step_requests_json(args.base_url, action)
     else:
         client = TestClient(app)
-        post = lambda path, payload=None: _post_local(client, path, payload)
-        step = lambda action: _step_local(client, action)
+        post = lambda path, payload=None: post_testclient_json(client, path, payload)
+        step = lambda action: step_testclient_json(client, action)
 
     post(
         "/fraud_hunter/seed_range",

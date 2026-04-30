@@ -7,17 +7,10 @@ server exclusively through FraudHunterEnv (HTTP/WS).
 from __future__ import annotations
 
 import argparse
-import urllib.request
 
 from fraud_hunter_env.client import FraudHunterEnv
 from fraud_hunter_env.models import FraudHunterAction
-
-
-def _ensure_server_up(base_url: str) -> None:
-    request = urllib.request.Request(f"{base_url}/health", method="GET")
-    with urllib.request.urlopen(request, timeout=3) as response:
-        if response.status != 200:
-            raise RuntimeError(f"/health returned {response.status}")
+from fraud_hunter_env.server.http_contract import ensure_server_up
 
 
 def run_smoke_test(base_url: str):
@@ -71,5 +64,5 @@ if __name__ == "__main__":
     parser.add_argument("--base-url", default="http://localhost:8000")
     args = parser.parse_args()
 
-    _ensure_server_up(args.base_url)
+    ensure_server_up(args.base_url)
     run_smoke_test(args.base_url)
