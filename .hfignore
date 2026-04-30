@@ -2,17 +2,32 @@
 outputs/
 wandb/
 runs/
+lora_final/
 
-
-# Case bank SQLite files — large, regenerated at runtime or via the notebook
-
+# Large generated data — regenerated at runtime
+data/case_bank/
+data/uploads/
+*.db
+*.sqlite
+assets/metrics_history.jsonl
+assets/training_curves.png
+assets/training_log.csv
+assets/eval_results.json
 
 # Python / tooling
 .venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 .env
+openenv_fraud_hunter_env.egg-info/
+.pytest_cache/
+
+# Dev / scratch
+.claude/
+dataset_ideas/
+research_and_eda.ipynb
 
 # IDE / OS
 .idea/

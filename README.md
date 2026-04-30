@@ -22,7 +22,6 @@ short_description: RLVR environment for training LLMs to investigate FCA fraud
 |---|---|
 | **Hugging Face Space** | _add your space URL here once pushed (see `Deploy to HF Spaces` below)_ |
 | **Training notebook**  | [`training/grpo_train.ipynb`](training/grpo_train.ipynb) (Colab-ready) |
-| **Demo video**         | _add a YouTube/Loom link < 2 min once recorded_ |
 | **Slides / writeup**   | [`blog.md`](blog.md) |
 | **Runtime Validation** | `python scripts/validate_runtime.py` |
 | **License**            | MIT |
