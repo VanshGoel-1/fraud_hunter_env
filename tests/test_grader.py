@@ -1,5 +1,7 @@
 import pytest
-from fraud_hunter_env.server.grader import format_gate, grade, GraderOutput, score_cot, validate_npi
+from fraud_hunter_env.server.grader import (
+    format_gate, grade, GraderOutput, score_cot, validate_npi, _ocr_cap_for,
+)
 from fraud_hunter_env.models import (
     FraudHunterAction, ActionKind, EntityKind,
     FORMAT_GATE_PENALTY, STEP_DECAY, COT_MISSING_PENALTY,
@@ -7,6 +9,7 @@ from fraud_hunter_env.models import (
     NPI_EXACT_MATCH_BONUS, NPI_MISMATCH_PENALTY,
 )
 from fraud_hunter_env.server.data_loader import _demo_case
+from fraud_hunter_env.server.sandbox import execute_code
 
 
 @pytest.fixture
@@ -165,4 +168,44 @@ def test_code_act_rewards_file_reads(demo_case, tmp_path):
     )
     assert out.reward > STEP_DECAY
     assert "smoking gun" in (out.tool_output or "")
-    assert "intercepted_comms/email_00.txt" in accessed
+    # Sandbox uses os.path.relpath which yields backslashes on Windows; normalise
+    # before comparing so the test is platform-agnostic.
+    accessed_norm = [a.replace("\\", "/") for a in accessed]
+    assert "intercepted_comms/email_00.txt" in accessed_norm
+
+
+def test_ocr_cap_tier_1():
+    assert _ocr_cap_for(1) == 1500
+
+
+def test_ocr_cap_tier_5():
+    assert _ocr_cap_for(5) == 4000
+
+
+def test_ocr_cap_unknown_tier():
+    assert _ocr_cap_for(99) == 4000
+
+
+# ── CodeAct sandbox hardening (read-only DB facade + interrupt-on-timeout) ───
+
+def test_code_act_conn_is_read_only(demo_case):
+    before = demo_case.conn.execute("SELECT COUNT(*) FROM ground_truth").fetchone()[0]
+    _stdout, err, _stats = execute_code(
+        "conn.execute('DELETE FROM ground_truth')",
+        demo_case.conn,
+    )
+    after = demo_case.conn.execute("SELECT COUNT(*) FROM ground_truth").fetchone()[0]
+
+    assert err is not None
+    assert "read-only" in err
+    assert after == before
+
+
+def test_code_act_timeout_interrupts_python_loop(demo_case):
+    _stdout, err, _stats = execute_code(
+        "while True:\n    pass",
+        demo_case.conn,
+    )
+
+    assert err is not None
+    assert "TIMEOUT" in err

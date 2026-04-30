@@ -46,6 +46,7 @@ from fraud_hunter_env.models import (
     NPI_MISMATCH_PENALTY, OCR_RECALL_BONUS, PDF_CHAIN_MULTIPLIER,
     PROOF_CHAIN_MULTIPLIER, STEP_DECAY, TYPOLOGY_MULTIPLIERS,
 )
+from fraud_hunter_env.npi_utils import validate_npi_luhn
 from fraud_hunter_env.schema import GT_KIND_SOURCES, TYPOLOGY_SOURCES
 
 from pathlib import Path
@@ -158,6 +159,17 @@ _COT_CLOSE_RE = re.compile(r"</think>", re.IGNORECASE)
 _WORD_RE      = re.compile(r"\b\w+\b")
 
 
+# OCR output cap — tier-scaled. Tier-1 cases have small single-page CMS-1500
+# forms; Tier-5 cases ship multi-page degraded scans where the contradiction
+# fields can live past the first 2k chars. Defaults to 4000 for unknown tiers.
+_OCR_CAP_BY_TIER: dict[int, int] = {1: 1500, 2: 2000, 3: 3000, 4: 4000, 5: 4000}
+_OCR_CAP_DEFAULT: int = 4000
+
+
+def _ocr_cap_for(tier: int) -> int:
+    return _OCR_CAP_BY_TIER.get(tier, _OCR_CAP_DEFAULT)
+
+
 @dataclass
 class GraderOutput:
     reward: float
@@ -263,23 +275,6 @@ def query_hash(action: FraudHunterAction) -> str:
 
 
 # ─── Layer 6: NPI Validator ───────────────────────────────────────────────────
-
-def _validate_npi_luhn(npi: str) -> bool:
-    """Simplified NPI Luhn check (prefix 80840 + 9 digits with check digit)."""
-    if not npi or len(npi) != 10 or not npi.isdigit():
-        return False
-    # Standard Luhn on "80840" + NPI[:-1]
-    full = "80840" + npi[:-1]
-    total = 0
-    for i, ch in enumerate(reversed(full)):
-        n = int(ch)
-        if i % 2 == 0:
-            n *= 2
-            if n > 9:
-                n -= 9
-        total += n
-    check = (10 - (total % 10)) % 10
-    return check == int(npi[-1])
 
 
 def validate_npi(
@@ -530,8 +525,9 @@ def grade(
                 tool_output = f"OCR_ERROR: {err}"
                 feedback_parts.append("ocr_error")
             else:
-                # Cap the output at 2000 chars to keep the agent's context tight.
-                tool_output = (text or "")[:2000]
+                # Cap the output to keep the agent's context tight; tier-scaled
+                # so harder cases (multi-page PDFs) get more headroom.
+                tool_output = (text or "")[:_ocr_cap_for(case.tier)]
                 encoded = base64.b64encode(pdf_abs.read_bytes()).decode("ascii")
                 feedback_parts.append(f"ocr_ok({len(text or '')}_chars)")
                 return GraderOutput(
