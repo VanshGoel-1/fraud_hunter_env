@@ -1,14 +1,25 @@
 # Training artifacts — never upload to HF Spaces
 outputs/
+outputs/*
 wandb/
+wandb/*
 runs/
+runs/*
 lora_final/
+lora_final/*
 
 # Large generated data — regenerated at runtime
-data/case_bank/
-data/uploads/
+# Blanket block on the data folder to prevent [Errno 28] crashes
+data/
+data/*
 *.db
 *.sqlite
+*.csv
+*.safetensors
+*.bin
+*.pdf
+
+# Exclude specific asset metrics that bloat repo
 assets/metrics_history.jsonl
 assets/training_curves.png
 assets/training_log.csv
@@ -16,7 +27,9 @@ assets/eval_results.json
 
 # Python / tooling
 .venv/
+.venv/*
 __pycache__/
+__pycache__/*
 *.pyc
 *.pyo
 *.pyd
@@ -26,6 +39,9 @@ openenv_fraud_hunter_env.egg-info/
 
 # Dev / scratch
 .claude/
+.claude/*
+.codex/
+.codex/*
 dataset_ideas/
 research_and_eda.ipynb
 
