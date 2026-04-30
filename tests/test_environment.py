@@ -2,11 +2,15 @@ import os
 import pytest
 from pathlib import Path
 from fraud_hunter_env.server.fraud_hunter_env_environment import FraudHunterEnvironment
-from fraud_hunter_env.models import FraudHunterAction, ActionKind
+from fraud_hunter_env.models import FraudHunterAction, ActionKind, EntityKind
 
-def test_environment_dynamic_generation():
-    # 1. Initialize environment
-    env = FraudHunterEnvironment()
+def test_environment_dynamic_generation(tmp_path):
+    # 1. Initialize environment with a deliberately non-existent bank dir so
+    #    reset() falls through to on-the-fly generation (not bank-pick). Stale
+    #    cases in the real bank may pre-date the multimodal compiler and lack
+    #    intercepted_comms/, which would spuriously fail the structure asserts
+    #    below.
+    env = FraudHunterEnvironment(case_bank_dir=str(tmp_path / "no_bank_here"))
     
     # 2. Reset generates a case dynamically
     obs = env.reset()
@@ -49,6 +53,46 @@ else:
     step_obs = env.step(action)
     assert "PDF Extracted:" in step_obs.tool_output or "No PDFs found" in step_obs.tool_output
     assert "SECURITY_VIOLATION" not in step_obs.tool_output
+
+def test_evidence_graph_entities_are_typed_dicts():
+    """Confirmed entity extractions should appear as {name, kind} dicts."""
+    env = FraudHunterEnvironment()
+    try:
+        env.reset()
+        # Probe corporate_registry for a real entity name from the active case.
+        probe = FraudHunterAction(
+            kind=ActionKind.SQL_QUERY,
+            sql_statement="SELECT entity_name FROM corporate_registry LIMIT 1",
+            think_trace="<think>probe registry</think>",
+        )
+        probe_obs = env.step(probe)
+        # Pull the first row of tool_output (header line is skipped); fall back
+        # to the demo-case ground-truth name when parsing the table fails.
+        name = "Acme Shell LLC"
+        if probe_obs.tool_output:
+            lines = [ln.strip() for ln in probe_obs.tool_output.splitlines() if ln.strip()]
+            if len(lines) >= 2:
+                name = lines[1]
+
+        ext = FraudHunterAction(
+            kind=ActionKind.EXTRACT_ENTITY,
+            extracted_name=name,
+            extracted_kind=EntityKind.CORPORATION,
+            think_trace="<think>flag this corporation</think>",
+        )
+        obs = env.step(ext)
+
+        assert obs.evidence_graph is not None
+        entities = obs.evidence_graph["entities"]
+        assert isinstance(entities, list)
+        # Each entry (if any) must be a dict with both `name` and `kind`.
+        for item in entities:
+            assert isinstance(item, dict)
+            assert "name" in item and "kind" in item
+            assert isinstance(item["name"], str) and isinstance(item["kind"], str)
+    finally:
+        env.close()
+
 
 def test_agentic_recall_ignores_sql_substrings_without_access():
     env = FraudHunterEnvironment(case_bank_dir=None)

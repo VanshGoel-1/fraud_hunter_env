@@ -31,7 +31,8 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-from fraud_hunter_env.data_gen.case_compiler import generate_multimodal_aks_case
+from fraud_hunter_env import config
+from fraud_hunter_env.data_gen.typology_dispatcher import generate_case_for_tier
 from fraud_hunter_env.models import (
     ActionKind,
     FraudHunterAction,
@@ -44,7 +45,6 @@ from fraud_hunter_env.server.difficulty import get_difficulty_manager
 from fraud_hunter_env.server.grader import GraderOutput, compute_agentic_recall, grade
 
 
-_DEFAULT_CASE_BANK = Path(__file__).resolve().parent.parent / "data" / "case_bank"
 _TABLE_ACCESS_RE = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_]*)", re.IGNORECASE)
 
 
@@ -147,7 +147,7 @@ class FraudHunterEnvironment(Environment):
         # rmtree so cleanup is silent and best-effort on every platform.
         self._sandbox_dir: str = tempfile.mkdtemp(prefix="fhe_")
         self._closed: bool = False
-        bank = Path(case_bank_dir) if case_bank_dir else _DEFAULT_CASE_BANK
+        bank = Path(case_bank_dir) if case_bank_dir else config.case_bank_dir()
         self._bank_dir: Optional[Path] = bank if bank.is_dir() else None
         self._rng = random.Random(rng_seed)
         self._case_seed_range = case_seed_range
@@ -155,7 +155,7 @@ class FraudHunterEnvironment(Environment):
         self._on_episode_end = on_episode_end
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._case: Optional[CaseHandle] = None
-        self._extracted: set[str] = set()
+        self._extracted: dict[str, str] = {}
         self._linked: set[tuple[str, str]] = set()
         self._contradictions: set[tuple[str, str]] = set()
         self._submitted: bool = False
@@ -194,7 +194,7 @@ class FraudHunterEnvironment(Environment):
             "difficulty_tier": self._difficulty_tier,
             "seed_range": self._case_seed_range,
             "queried_tables": sorted(self._queried_tables),
-            "entities": sorted(self._extracted),
+            "entities": sorted(self._extracted.items()),
             "links": sorted([list(x) for x in self._linked]),
             "contradictions": sorted([list(x) for x in self._contradictions]),
             "proof_trace": list(self._proof_trace),
@@ -242,7 +242,10 @@ class FraudHunterEnvironment(Environment):
     def _build_evidence_graph(self) -> dict[str, Any]:
         """Construct the evidence graph returned in every observation."""
         return {
-            "entities": sorted(self._extracted),
+            "entities": [
+                {"name": n, "kind": self._extracted[n]}
+                for n in sorted(self._extracted)
+            ],
             "shell_links": [{"child": c, "parent": p} for c, p in self._linked],
             "contradictions": [{"a": a, "b": b} for a, b in self._contradictions],
             "proof_chain_length": len(self._proof_trace),
@@ -318,10 +321,10 @@ class FraudHunterEnvironment(Environment):
             generation_seed = None
             if self._case_seed_range is not None:
                 generation_seed = self._rng.randint(*self._case_seed_range)
-            generate_multimodal_aks_case(
+            generate_case_for_tier(
                 sandbox_path,
                 case_id,
-                self._difficulty_tier,
+                tier=self._difficulty_tier,
                 rng_seed=generation_seed,
             )
 
@@ -395,7 +398,7 @@ class FraudHunterEnvironment(Environment):
         out: GraderOutput = grade(
             action=action,
             case=self._case,
-            extracted=self._extracted,
+            extracted=set(self._extracted),  # keys-only view for grader
             linked=self._linked,
             contradictions=self._contradictions,
             submitted=self._submitted,
@@ -415,7 +418,8 @@ class FraudHunterEnvironment(Environment):
         # Fold positive signals into persistent sets
         if (action.kind == ActionKind.EXTRACT_ENTITY and action.extracted_name
                 and any(hit.startswith("extract=") for hit in out.hits)):
-            self._extracted.add(action.extracted_name.lower())
+            kind_value = action.extracted_kind.value if action.extracted_kind else "unknown"
+            self._extracted[action.extracted_name.lower()] = kind_value
         elif (action.kind == ActionKind.LINK_SHELL and action.child_entity and action.parent_entity
               and any(hit.startswith("shell_link=") for hit in out.hits)):
             self._linked.add((action.child_entity.lower(), action.parent_entity.lower()))
