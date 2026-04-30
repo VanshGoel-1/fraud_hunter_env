@@ -23,6 +23,7 @@ import io
 import json
 import os
 import sqlite3
+import sys
 import threading
 import time
 import traceback
@@ -75,6 +76,7 @@ _FORBIDDEN_SUBSTRINGS = (
 
 _MAX_OUTPUT_CHARS = 4096
 _TIMEOUT_SECONDS = 5
+_FORBIDDEN_SQL = ("DROP ", "DELETE ", "INSERT ", "UPDATE ", "ATTACH ", "PRAGMA ")
 
 
 class _SafetyVisitor(ast.NodeVisitor):
@@ -135,6 +137,81 @@ def _check_code_safety(code: str) -> Optional[str]:
     if visitor.violation:
         return visitor.violation
     return None
+
+
+def _validate_readonly_sql(sql: str) -> None:
+    sql_upper = (sql or "").strip().upper()
+    if not sql_upper.startswith("SELECT"):
+        raise PermissionError("sandbox conn is read-only; only SELECT statements are permitted")
+    for pat in _FORBIDDEN_SQL:
+        if pat in sql_upper:
+            raise PermissionError(f"sandbox conn rejected SQL operation: {pat.strip()}")
+
+
+class _ReadOnlyCursor:
+    """Small sqlite cursor facade that never exposes the writable connection."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self._conn = conn
+        self._cursor: Optional[sqlite3.Cursor] = None
+
+    def execute(self, sql: str, parameters=()):
+        _validate_readonly_sql(sql)
+        self._cursor = self._conn.execute(sql, parameters)
+        return self
+
+    def fetchone(self):
+        if self._cursor is None:
+            raise sqlite3.ProgrammingError("fetchone() called before execute()")
+        return self._cursor.fetchone()
+
+    def fetchmany(self, size: int | None = None):
+        if self._cursor is None:
+            raise sqlite3.ProgrammingError("fetchmany() called before execute()")
+        return self._cursor.fetchmany() if size is None else self._cursor.fetchmany(size)
+
+    def fetchall(self):
+        if self._cursor is None:
+            raise sqlite3.ProgrammingError("fetchall() called before execute()")
+        return self._cursor.fetchall()
+
+    @property
+    def description(self):
+        return self._cursor.description if self._cursor is not None else None
+
+    def close(self) -> None:
+        if self._cursor is not None:
+            self._cursor.close()
+
+    def __iter__(self):
+        if self._cursor is None:
+            return iter(())
+        return iter(self._cursor)
+
+
+class _ReadOnlyConnection:
+    """Restricted DB facade exposed to agent CodeAct snippets."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self._conn = conn
+
+    def execute(self, sql: str, parameters=()):
+        return _ReadOnlyCursor(self._conn).execute(sql, parameters)
+
+    def cursor(self):
+        return _ReadOnlyCursor(self._conn)
+
+    def executescript(self, _script: str):
+        raise PermissionError("sandbox conn is read-only; executescript() is disabled")
+
+    def executemany(self, _sql: str, _seq_of_parameters):
+        raise PermissionError("sandbox conn is read-only; executemany() is disabled")
+
+    def commit(self) -> None:
+        raise PermissionError("sandbox conn is read-only; commit() is disabled")
+
+    def rollback(self) -> None:
+        raise PermissionError("sandbox conn is read-only; rollback() is disabled")
 
 
 def execute_code(
@@ -250,10 +327,12 @@ def execute_code(
     import datetime as _datetime
     import math as _math
 
+    readonly_conn = _ReadOnlyConnection(conn)
+
     # Build restricted execution namespace
     namespace = {
         "__builtins__": _SAFE_BUILTINS,
-        "conn": conn,
+        "conn": readonly_conn,
         "json": json,
         "re": _re,
         "datetime": _datetime,
@@ -273,10 +352,17 @@ def execute_code(
     stdout_capture = io.StringIO()
     error: Optional[str] = None
     rows_returned = 0
+    deadline = time.monotonic() + _TIMEOUT_SECONDS
+
+    def _timeout_trace(frame, event, arg):
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Code exceeded {_TIMEOUT_SECONDS}s limit")
+        return _timeout_trace
 
     def _run() -> None:
         nonlocal error, rows_returned
         try:
+            sys.settrace(_timeout_trace)
             if on_sql is not None:
                 conn.set_trace_callback(on_sql)
             with redirect_stdout(stdout_capture):
@@ -290,9 +376,12 @@ def execute_code(
                 rows_returned = len(namespace["result"])
             elif namespace.get("result") not in (None, ""):
                 rows_returned = 1
+        except TimeoutError:
+            error = f"TIMEOUT: Code exceeded {_TIMEOUT_SECONDS}s limit"
         except Exception:
             error = traceback.format_exc()
         finally:
+            sys.settrace(None)
             if on_sql is not None:
                 conn.set_trace_callback(None)
 
@@ -333,8 +422,7 @@ def execute_sql(
         return "", "Only SELECT statements are permitted", 0
 
     # Block dangerous SQL patterns
-    forbidden_sql = ["DROP ", "DELETE ", "INSERT ", "UPDATE ", "ATTACH ", "PRAGMA "]
-    for pat in forbidden_sql:
+    for pat in _FORBIDDEN_SQL:
         if pat in sql_upper:
             return "", f"Forbidden SQL operation: {pat.strip()}", 0
 
