@@ -33,6 +33,8 @@ import requests
 
 from fraud_hunter_env.client import FraudHunterEnv
 from fraud_hunter_env.models import FraudHunterAction
+from fraud_hunter_env.replay import verify_replay_chain
+from fraud_hunter_env.server.http_contract import ensure_server_up
 
 
 EVAL_SEED_RANGE = (8001, 10000)
@@ -162,18 +164,8 @@ POLICIES: dict[str, PolicyFn] = {
 
 
 # ── Server health pre-check ──────────────────────────────────────────────────
-
-def _ensure_server_up(base_url: str) -> None:
-    try:
-        r = requests.get(f"{base_url}/health", timeout=3)
-        if r.status_code != 200:
-            raise RuntimeError(f"/health returned {r.status_code}")
-    except Exception as exc:
-        sys.stderr.write(
-            f"\n[FATAL] cannot reach Fraud Hunter Env server at {base_url}: {exc}\n"
-            f"Start it first:  uv run server/app.py\n\n"
-        )
-        sys.exit(2)
+# Health probe lives in server/http_contract.py — eval.py and inference.py
+# both call it directly so the wire-format check is single-source.
 
 
 def _configure_eval_seed_range(base_url: str) -> None:
@@ -205,6 +197,9 @@ def run_episode(client: FraudHunterEnv, policy: PolicyFn, max_steps: int = 64) -
     state: dict = {}
     episode_reward = 0.0
     last_info: dict[str, Any] = {}
+    info_history: list[dict] = []
+    if obs and obs.info:
+        info_history.append(dict(obs.info))
 
     for step in range(max_steps):
         try:
@@ -226,6 +221,7 @@ def run_episode(client: FraudHunterEnv, policy: PolicyFn, max_steps: int = 64) -
         episode_reward += float(result.reward or 0.0)
         if obs and obs.info:
             last_info = dict(obs.info)
+            info_history.append(dict(obs.info))
         if result.done:
             break
 
@@ -233,6 +229,16 @@ def run_episode(client: FraudHunterEnv, policy: PolicyFn, max_steps: int = 64) -
     # Trust the server's terminal metrics if present, else fall back to our tally.
     if "episode_reward" not in last_info:
         last_info["episode_reward"] = round(episode_reward, 2)
+
+    # Audit the SHA-256 replay chain emitted by the env per step. A break
+    # indicates either tampering or out-of-order info records — surface but
+    # don't abort the eval (a single bad chain shouldn't void the whole run).
+    chain_ok, chain_reason = verify_replay_chain(info_history)
+    last_info["replay_chain_ok"] = chain_ok
+    last_info["replay_chain_steps"] = len(info_history)
+    if not chain_ok:
+        last_info["replay_chain_reason"] = chain_reason
+        sys.stderr.write(f"[replay] chain verification failed: {chain_reason}\n")
     return last_info
 
 
@@ -342,7 +348,14 @@ def main() -> None:
     args = ap.parse_args()
 
     random.seed(args.seed)
-    _ensure_server_up(args.base_url)
+    try:
+        ensure_server_up(args.base_url)
+    except Exception as exc:
+        sys.stderr.write(
+            f"\n[FATAL] cannot reach Fraud Hunter Env server at {args.base_url}: {exc}\n"
+            f"Start it first:  uv run server/app.py\n\n"
+        )
+        sys.exit(2)
     _configure_eval_seed_range(args.base_url)
 
     all_results: dict[str, list[dict]] = {}
