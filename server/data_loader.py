@@ -86,17 +86,74 @@ class CaseHandle:
         return "\n".join(lines)
 
     def query_medicare(self, beneficiary_id: Optional[str], claim_id: Optional[str]) -> str:
-        """Query CMS-aligned health records."""
+        """Query CMS-aligned health records.
+
+        Claim lookup falls through carrier → inpatient → outpatient → PDE so an
+        agent that asks for a claim that lives in the inpatient table doesn't
+        get a misleading ``no_match`` (the previous behaviour silently hid
+        ground-truth contradictions involving non-carrier claims).
+        """
         if claim_id:
-            # Check Carrier Claims first (most common)
+            # Carrier claims (most common in this domain)
             cur = self.conn.execute(
                 "SELECT CLM_ID, DESYNPUF_ID, CLM_FROM_DT, PRF_PHYSN_NPI, LINE_NCH_PMT_AMT, HCPCS_CD "
                 "FROM carrier_claims WHERE CLM_ID = ?", (claim_id,),
             )
             r = cur.fetchone()
             if r:
-                return f"claim_id={r[0]} bene_id={r[1]} date={r[2]} npi={r[3]} amt={r[4]} hcpcs={r[5]}"
-            return f"no_match: no claim {claim_id!r} found in carrier_claims"
+                return (
+                    f"source=carrier_claims claim_id={r[0]} bene_id={r[1]} date={r[2]} "
+                    f"npi={r[3]} amt={r[4]} hcpcs={r[5]}"
+                )
+
+            # Inpatient
+            try:
+                cur = self.conn.execute(
+                    "SELECT CLM_ID, DESYNPUF_ID, CLM_FROM_DT, AT_PHYSN_NPI, CLM_PMT_AMT, "
+                    "CLM_DRG_CD FROM inpatient_claims WHERE CLM_ID = ?", (claim_id,),
+                )
+                r = cur.fetchone()
+                if r:
+                    return (
+                        f"source=inpatient_claims claim_id={r[0]} bene_id={r[1]} "
+                        f"date={r[2]} npi={r[3]} amt={r[4]} drg={r[5]}"
+                    )
+            except sqlite3.OperationalError:
+                pass
+
+            # Outpatient
+            try:
+                cur = self.conn.execute(
+                    "SELECT CLM_ID, DESYNPUF_ID, CLM_FROM_DT, AT_PHYSN_NPI, CLM_PMT_AMT, "
+                    "HCPCS_CD_1 FROM outpatient_claims WHERE CLM_ID = ?", (claim_id,),
+                )
+                r = cur.fetchone()
+                if r:
+                    return (
+                        f"source=outpatient_claims claim_id={r[0]} bene_id={r[1]} "
+                        f"date={r[2]} npi={r[3]} amt={r[4]} hcpcs={r[5]}"
+                    )
+            except sqlite3.OperationalError:
+                pass
+
+            # Prescription drug events (PDE_ID acts as the claim id here)
+            try:
+                cur = self.conn.execute(
+                    "SELECT PDE_ID, DESYNPUF_ID, SRVC_DT, PRVDR_NPI, TOT_RX_CST_AMT, DRUG_NAME "
+                    "FROM prescription_drug_events WHERE PDE_ID = ?", (claim_id,),
+                )
+                r = cur.fetchone()
+                if r:
+                    return (
+                        f"source=prescription_drug_events pde_id={r[0]} bene_id={r[1]} "
+                        f"date={r[2]} npi={r[3]} amt={r[4]} drug={r[5]!r}"
+                    )
+            except sqlite3.OperationalError:
+                pass
+
+            return (
+                f"no_match: no claim {claim_id!r} in carrier/inpatient/outpatient/PDE tables"
+            )
 
         # Beneficiary lookup
         bcur = self.conn.execute(
@@ -106,17 +163,50 @@ class CaseHandle:
         br = bcur.fetchone()
         if not br:
             return f"no_match: no beneficiary {beneficiary_id!r}"
-        
+
         lines = [f"bene_id={br[0]} dob={br[1]} dod={br[2]} state={br[3]}"]
-        
-        # List recent claims
+
+        # Carrier claims for the beneficiary
         ccur = self.conn.execute(
             "SELECT CLM_ID, CLM_FROM_DT, LINE_NCH_PMT_AMT, HCPCS_CD "
             "FROM carrier_claims WHERE DESYNPUF_ID = ? LIMIT 10", (beneficiary_id,),
         )
         for c in ccur.fetchall():
             lines.append(f"  carrier_claim: id={c[0]} date={c[1]} amt={c[2]} hcpcs={c[3]}")
-            
+
+        # Inpatient
+        try:
+            icur = self.conn.execute(
+                "SELECT CLM_ID, CLM_FROM_DT, CLM_PMT_AMT, CLM_DRG_CD "
+                "FROM inpatient_claims WHERE DESYNPUF_ID = ? LIMIT 5", (beneficiary_id,),
+            )
+            for c in icur.fetchall():
+                lines.append(f"  inpatient_claim: id={c[0]} date={c[1]} amt={c[2]} drg={c[3]}")
+        except sqlite3.OperationalError:
+            pass
+
+        # Outpatient
+        try:
+            ocur = self.conn.execute(
+                "SELECT CLM_ID, CLM_FROM_DT, CLM_PMT_AMT, HCPCS_CD_1 "
+                "FROM outpatient_claims WHERE DESYNPUF_ID = ? LIMIT 5", (beneficiary_id,),
+            )
+            for c in ocur.fetchall():
+                lines.append(f"  outpatient_claim: id={c[0]} date={c[1]} amt={c[2]} hcpcs={c[3]}")
+        except sqlite3.OperationalError:
+            pass
+
+        # Prescription drug events
+        try:
+            pcur = self.conn.execute(
+                "SELECT PDE_ID, SRVC_DT, TOT_RX_CST_AMT, DRUG_NAME "
+                "FROM prescription_drug_events WHERE DESYNPUF_ID = ? LIMIT 5", (beneficiary_id,),
+            )
+            for c in pcur.fetchall():
+                lines.append(f"  pde: id={c[0]} date={c[1]} amt={c[2]} drug={c[3]!r}")
+        except sqlite3.OperationalError:
+            pass
+
         return "\n".join(lines)
 
 

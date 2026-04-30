@@ -130,7 +130,16 @@ class FraudHunterEnvironment(Environment):
         rng_seed: int | None = None,
         case_seed_range: tuple[int, int] | None = None,
         on_episode_end: Optional[Callable[[dict[str, Any]], None]] = None,
+        specific_case_id: str | None = None,
+        session_id: str | None = None,
     ):
+        # specific_case_id: pin reset() to a single case directory by name
+        #   (e.g. "t3_a1b2c3d4"). Used by GRPO so all completions in a group
+        #   evaluate the same case, otherwise group-relative advantages would
+        #   measure case-difficulty noise instead of policy quality.
+        # session_id: stable identifier for the difficulty manager. When None
+        #   we mint a fresh UUID per env (legacy behaviour); training pipelines
+        #   should pass a stable id so RLVE accumulates across reward calls.
         # Manual tempdir (no auto-finalizer): tempfile.TemporaryDirectory's
         # GC-time cleanup raises noisy PermissionErrors on Windows when SQLite
         # has briefly held the medicare_records.db handle past conn.close().
@@ -142,6 +151,7 @@ class FraudHunterEnvironment(Environment):
         self._bank_dir: Optional[Path] = bank if bank.is_dir() else None
         self._rng = random.Random(rng_seed)
         self._case_seed_range = case_seed_range
+        self._specific_case_id = specific_case_id
         self._on_episode_end = on_episode_end
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._case: Optional[CaseHandle] = None
@@ -157,7 +167,7 @@ class FraudHunterEnvironment(Environment):
         self._hallucination_count: int = 0
         self._episode_reward: float = 0.0
         self._difficulty_tier: int = 1
-        self._session_id: str = str(uuid4())
+        self._session_id: str = session_id or str(uuid4())
         self._replay_prev_hash: str | None = None
         self._replay_hash: str | None = None
 
@@ -271,18 +281,31 @@ class FraudHunterEnvironment(Environment):
         # Prefer pre-built bank when available; fall back to on-the-fly generation.
         bank_pick: Optional[Path] = None
         if self._bank_dir is not None:
-            candidates = _bank_cases_for_tier(
-                self._bank_dir,
-                self._difficulty_tier,
-                self._case_seed_range,
-            )
-            # Tier-down fallback: scan lower tiers if current tier has no cases
-            t = self._difficulty_tier
-            while not candidates and t > 1:
-                t -= 1
-                candidates = _bank_cases_for_tier(self._bank_dir, t, self._case_seed_range)
-            if candidates:
-                bank_pick = self._rng.choice(candidates)
+            # Pinned case path: search every tier for the requested case_id so
+            # GRPO group-mates can be re-anchored to the exact same case across
+            # fresh env instances.
+            if self._specific_case_id is not None:
+                for t in range(1, 6):
+                    candidate = self._bank_dir / f"tier_{t}" / self._specific_case_id
+                    if candidate.is_dir() and (candidate / "medicare_records.db").is_file():
+                        bank_pick = candidate
+                        # Pinning a case implies the tier is fixed by that case.
+                        self._difficulty_tier = t
+                        break
+
+            if bank_pick is None:
+                candidates = _bank_cases_for_tier(
+                    self._bank_dir,
+                    self._difficulty_tier,
+                    self._case_seed_range,
+                )
+                # Tier-down fallback: scan lower tiers if current tier has no cases
+                t = self._difficulty_tier
+                while not candidates and t > 1:
+                    t -= 1
+                    candidates = _bank_cases_for_tier(self._bank_dir, t, self._case_seed_range)
+                if candidates:
+                    bank_pick = self._rng.choice(candidates)
 
         if bank_pick is not None:
             case_id = bank_pick.name

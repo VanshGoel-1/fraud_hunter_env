@@ -40,7 +40,8 @@ from fraud_hunter_env.models import (
     CONTRADICTION_REWARD, CODEACT_BONUS, COT_GROUNDED_BONUS,
     COT_MISSING_PENALTY, DOC_CLAIM_MATCH_BONUS, DUPLICATE_QUERY_PENALTY,
     EXTRACT_ENTITY_REWARD, FORMAT_GATE_PENALTY, FraudHunterAction,
-    HALLUCINATED_ENTITY_PENALTY, LENGTH_PENALTY_PHASE_OUT_STEP,
+    HALLUCINATED_ENTITY_PENALTY, HALLUCINATED_LINK_PENALTY,
+    LENGTH_PENALTY_PHASE_OUT_STEP,
     LENGTH_PENALTY_RATE, LINK_SHELL_REWARD, NPI_EXACT_MATCH_BONUS,
     NPI_MISMATCH_PENALTY, OCR_RECALL_BONUS, PDF_CHAIN_MULTIPLIER,
     PROOF_CHAIN_MULTIPLIER, STEP_DECAY, TYPOLOGY_MULTIPLIERS,
@@ -242,6 +243,11 @@ def score_cot(
 # ─── Layer 5: Duplicate Detection ─────────────────────────────────────────────
 
 def query_hash(action: FraudHunterAction) -> str:
+    """Stable identity for an information-gathering action. Used to penalise
+    repeated queries. Includes ``python_code`` and ``pdf_path`` so duplicate
+    CodeAct probes and OCR re-reads are caught (they previously slipped through
+    because only the structured-query fields were hashed).
+    """
     payload = {
         "kind": action.kind.value,
         "entity_name":    action.entity_name,
@@ -249,6 +255,8 @@ def query_hash(action: FraudHunterAction) -> str:
         "beneficiary_id": action.beneficiary_id,
         "claim_id":       action.claim_id,
         "sql_statement":  action.sql_statement,
+        "python_code":    action.python_code,
+        "pdf_path":       action.pdf_path,
     }
     blob = json.dumps(payload, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
@@ -353,6 +361,7 @@ def grade(
         ActionKind.QUERY_MEDICARE,
         ActionKind.SQL_QUERY,
         ActionKind.CODE_ACT,
+        ActionKind.OCR_DOCUMENT,
     ):
         qh = query_hash(action)
         if qh in case.seen_queries:
@@ -454,8 +463,21 @@ def grade(
             hits.append(f"shell_link={LINK_SHELL_REWARD}")
             feedback_parts.append(f"shell_link_confirmed:{child}→{parent}")
             new_proof_trace.append(f"link:{child}→{parent}")
+        elif (child, parent) in linked:
+            feedback_parts.append(f"shell_link_already_recorded:{child}→{parent}")
         else:
-            feedback_parts.append(f"shell_link_unconfirmed:{child}→{parent}")
+            # Penalise asserting a link between entities that don't exist or
+            # have no DB-grounded relationship. Mirrors HALLUCINATED_ENTITY_PENALTY
+            # for extract_entity so shotgun-guessing links isn't free.
+            real = case.all_entity_names()
+            real_lower = {n.lower() for n in real}
+            both_in_db = (child in real_lower) and (parent in real_lower)
+            if not both_in_db:
+                reward += HALLUCINATED_LINK_PENALTY
+                hits.append(f"hallucinated_link={HALLUCINATED_LINK_PENALTY}")
+                feedback_parts.append(f"hallucinated_link:{child}→{parent}")
+            else:
+                feedback_parts.append(f"shell_link_unconfirmed:{child}→{parent}")
 
     elif action.kind == ActionKind.CLAIM_CONTRADICTION:
         a    = (action.evidence_a or "").lower()
@@ -599,14 +621,15 @@ def grade(
         done = True
         won, partial = case_outcome(extracted, linked, contradictions, case)
         if won:
-            # Bonus: causal chain multiplier
-            chain_complete = _check_proof_chain(new_proof_trace)
+            # Bonus: causal chain multiplier (scaled by tier so a Tier-5 win
+            # actually requires a Tier-5-sized chain, not just one of each).
+            chain_complete = _check_proof_chain(new_proof_trace, case.tier)
             base = CASE_WON_REWARD
             if chain_complete:
                 base *= PROOF_CHAIN_MULTIPLIER
             reward += base
             hits.append(f"case_won={base:.1f}")
-            feedback_parts.append(f"case_won(chain_complete={chain_complete})")
+            feedback_parts.append(f"case_won(chain_complete={chain_complete},tier={case.tier})")
         elif partial:
             reward += CASE_PARTIAL_REWARD
             hits.append(f"case_partial={CASE_PARTIAL_REWARD}")
@@ -626,12 +649,38 @@ def grade(
     )
 
 
-def _check_proof_chain(proof_trace: list[str]) -> bool:
-    """Returns True if the trace contains at least 1 entity + 1 link + 1 contradiction."""
-    has_entity = any(p.startswith("entity:") for p in proof_trace)
-    has_link   = any(p.startswith("link:") for p in proof_trace)
-    has_contra = any(p.startswith("contradiction:") for p in proof_trace)
-    return has_entity and has_link and has_contra
+# Win-threshold schedule: fraction of each ground-truth bucket the agent must
+# cover for a CASE_WON outcome. Strict at low tiers (where the case is small
+# enough to fully solve in 60 steps) and relaxed at high tiers (Tier-5 cases
+# have ~26 GT items — requiring 100% coverage made CASE_WON practically
+# unreachable, which dead-ended the policy gradient at high tiers).
+_WIN_THRESHOLD_BY_TIER: dict[int, float] = {
+    1: 1.00,
+    2: 0.90,
+    3: 0.80,
+    4: 0.70,
+    5: 0.60,
+}
+
+
+def _required_chain_count(tier: int) -> int:
+    """Per-bucket count the proof trace must cover to earn the multiplier.
+
+    Scales with tier so that one entity + one link + one contradiction does
+    not buy a 1.5× bonus on a 26-row Tier-5 case.
+    """
+    return max(1, min(tier, 5))
+
+
+def _check_proof_chain(proof_trace: list[str], tier: int = 1) -> bool:
+    """Returns True if the trace covers at least ``_required_chain_count(tier)``
+    of each of {entity, link, contradiction}.
+    """
+    required = _required_chain_count(tier)
+    n_entity = sum(1 for p in proof_trace if p.startswith("entity:"))
+    n_link   = sum(1 for p in proof_trace if p.startswith("link:"))
+    n_contra = sum(1 for p in proof_trace if p.startswith("contradiction:"))
+    return n_entity >= required and n_link >= required and n_contra >= required
 
 
 def case_outcome(
@@ -664,10 +713,18 @@ def case_outcome(
     total_gt   = len(gt_entities) + len(gt_links) + len(gt_ctr)
     total_hit  = entities_hit + links_hit + contras_hit
 
-    won     = (
-        gt_entities.issubset(extracted)
-        and gt_links.issubset(linked)
-        and gt_ctr_norm.issubset(norm_ctr)
+    # Tier-scaled win condition: each non-empty bucket must clear the tier's
+    # coverage threshold. Empty buckets are vacuously satisfied so cases with
+    # only contradictions (no shell_link planted) can still be won.
+    threshold = _WIN_THRESHOLD_BY_TIER.get(case.tier, 0.6)
+
+    def _bucket_ok(hit: int, total: int) -> bool:
+        return total == 0 or (hit / total) >= threshold
+
+    won = (
+        _bucket_ok(entities_hit, len(gt_entities))
+        and _bucket_ok(links_hit, len(gt_links))
+        and _bucket_ok(contras_hit, len(gt_ctr_norm))
     )
     partial = not won and total_gt > 0 and total_hit / total_gt >= 0.5
 

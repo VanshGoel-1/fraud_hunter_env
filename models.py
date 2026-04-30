@@ -251,6 +251,7 @@ DUPLICATE_QUERY_PENALTY   = -5.0    # same query issued twice
 
 # Hallucination / NPI
 HALLUCINATED_ENTITY_PENALTY = -50.0  # entity not in database
+HALLUCINATED_LINK_PENALTY   = -20.0  # shell link asserted with no DB-grounded relation
 NPI_EXACT_MATCH_BONUS       = +25.0  # provider NPI perfectly verified
 NPI_MISMATCH_PENALTY        = -20.0  # wrong NPI (zero partial credit)
 
