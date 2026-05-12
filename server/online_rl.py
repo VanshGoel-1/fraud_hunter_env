@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -27,7 +28,12 @@ class OnlineRLPolicy:
     action strategies instead of fine-tuning full LLM weights online.
     """
 
-    def __init__(self, learning_rate: float = 0.03, temperature: float = 1.0):
+    def __init__(
+        self,
+        learning_rate: float = 0.03,
+        temperature: float = 1.0,
+        weights_path: str | Path | None = None,
+    ):
         self.learning_rate = float(max(1e-5, learning_rate))
         self.temperature = float(max(0.1, temperature))
         self._arms = ["llm", "sql_schema", "code_list_comms", "ocr_doc"]
@@ -40,6 +46,15 @@ class OnlineRLPolicy:
         self._selection_count = {arm: 0 for arm in self._arms}
         self._pending: dict[str, PendingDecision] = {}
         self._lock = threading.Lock()
+
+        if weights_path is not None:
+            try:
+                self._load_from(Path(weights_path))
+            except FileNotFoundError:
+                pass  # first run — start from scratch
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("Could not load bandit weights from %s: %s", weights_path, exc)
 
     def _dot(self, w: list[float], x: list[float]) -> float:
         return sum(a * b for a, b in zip(w, x, strict=True))
@@ -227,6 +242,39 @@ class OnlineRLPolicy:
                 "weights": {k: list(v) for k, v in self._weights.items()},
                 "pending_decisions": len(self._pending),
             }
+
+    def save(self, path: str | Path) -> None:
+        """Persist weights, baseline, and counts to a JSON file."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            data = {
+                "learning_rate": self.learning_rate,
+                "temperature": self.temperature,
+                "baseline": self._baseline,
+                "updates": self._updates,
+                "selection_count": dict(self._selection_count),
+                "weights": {k: list(v) for k, v in self._weights.items()},
+            }
+        path.write_text(json.dumps(data, indent=2))
+
+    def _load_from(self, path: Path) -> None:
+        """Restore weights from a file written by save(). Called only from __init__."""
+        data = json.loads(path.read_text())
+        saved_weights: dict[str, list[float]] = data.get("weights", {})
+        for arm in self._arms:
+            if arm in saved_weights:
+                w = saved_weights[arm]
+                # pad or truncate to match current feature_dim
+                if len(w) < self._feature_dim:
+                    w = w + [0.0] * (self._feature_dim - len(w))
+                self._weights[arm] = w[: self._feature_dim]
+        self._baseline = float(data.get("baseline", 0.0))
+        self._updates = int(data.get("updates", 0))
+        saved_counts: dict[str, int] = data.get("selection_count", {})
+        for arm in self._arms:
+            if arm in saved_counts:
+                self._selection_count[arm] = int(saved_counts[arm])
 
     def reset(self) -> dict[str, Any]:
         with self._lock:

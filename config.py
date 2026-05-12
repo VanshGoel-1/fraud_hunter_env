@@ -12,7 +12,12 @@ we need nested config or per-environment overlays.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -27,27 +32,60 @@ def case_bank_dir() -> Path:
     return Path(raw) if raw else DEFAULT_CASE_BANK_DIR
 
 
-# ── HTTP / auth ──────────────────────────────────────────────────────────────
+# ── CORS ─────────────────────────────────────────────────────────────────────
 
-_DEFAULT_ALLOWED_ORIGINS = (
-    "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000"
-)
+_DEFAULT_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
 
 
-def allowed_origins() -> list[str]:
-    """CORS allowlist (env: ``ALLOWED_ORIGINS`` — comma-separated).
+@dataclass(frozen=True)
+class CORSConfig:
+    """Encapsulates CORS policy and registers it onto a FastAPI app.
 
-    Defaults to ``*`` on HF Spaces (detected via ``SPACE_ID``) so the
-    built-in Playground UI — served from huggingface.co — can reach the
-    server.  Override with ``ALLOWED_ORIGINS`` to tighten in production.
+    Resolved from the environment via ``CORSConfig.from_env()``.
+    Env var ``ALLOWED_ORIGINS`` accepts a comma-separated list of origins.
+    Pass ``*`` to allow all origins (open; only suitable for public read-only
+    deployments or local development where auth is handled separately).
     """
-    raw = os.environ.get("ALLOWED_ORIGINS")
-    if raw:
-        return [o.strip() for o in raw.split(",") if o.strip()]
-    if os.environ.get("SPACE_ID"):
-        return ["*"]
-    return [o.strip() for o in _DEFAULT_ALLOWED_ORIGINS.split(",") if o.strip()]
 
+    origins: list[str] = field(default_factory=lambda: list(_DEFAULT_ORIGINS))
+    allow_credentials: bool = True
+    methods: list[str] = field(default_factory=lambda: ["GET", "POST", "OPTIONS"])
+    headers: list[str] = field(default_factory=lambda: ["*"])
+
+    @classmethod
+    def from_env(cls) -> "CORSConfig":
+        raw = (os.environ.get("ALLOWED_ORIGINS") or "").strip()
+        if raw:
+            origins = [o.strip() for o in raw.split(",") if o.strip()]
+        elif os.environ.get("SPACE_ID"):
+            # HF Spaces: the Playground UI is served from huggingface.co
+            origins = ["*"]
+        else:
+            origins = list(_DEFAULT_ORIGINS)
+        return cls(
+            origins=origins,
+            # credentials cookies are incompatible with wildcard origin
+            allow_credentials="*" not in origins,
+        )
+
+    def register(self, app: "FastAPI") -> None:
+        """Attach CORSMiddleware to *app* using this config."""
+        from fastapi.middleware.cors import CORSMiddleware  # runtime import only
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=self.origins,
+            allow_credentials=self.allow_credentials,
+            allow_methods=self.methods,
+            allow_headers=self.headers,
+        )
+
+
+# ── HTTP / auth ──────────────────────────────────────────────────────────────
 
 def api_keys() -> set[str]:
     """Authorized X-API-Key set (env: ``FRAUD_HUNTER_API_KEYS`` — comma-separated).

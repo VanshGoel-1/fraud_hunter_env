@@ -85,6 +85,7 @@ data/case_bank/**/intercepted_comms/
 /docs/
 /.claude/
 CLAUDE.md
+ARTICLE.md
 research_and_eda.ipynb
 
 # ─── OS / editor noise ────────────────────────────────────────────────────────

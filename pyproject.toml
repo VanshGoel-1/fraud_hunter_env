@@ -30,11 +30,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "trl>=0.8.0",
+# Install with: uv sync --extra train
+train = [
+    "torch>=2.0.0",
+    "trl>=0.15.0",
+    "transformers>=4.40.0",
+    "peft>=0.10.0",
+    "datasets>=2.19.0",
+]
+# Install with: uv sync --extra gpu  (requires CUDA)
+gpu = [
     "unsloth>=2024.3",
-    "vllm>=0.4.0",
-    "datasets>=2.16.0",
+    "bitsandbytes>=0.43.0",
+    "vllm>=0.6.0",
 ]
 test = [
     "pytest>=8.0.0",
@@ -56,4 +64,9 @@ pythonpath = ["..", "."]
 testpaths = ["tests"]
 markers = [
     "smoke: end-to-end smoke validations over the live HTTP path",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
 ]

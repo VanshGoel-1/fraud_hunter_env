@@ -24,6 +24,7 @@ import contextvars
 import json
 import math
 import mimetypes
+import os as _os_dotenv
 import random
 import re
 import threading
@@ -34,8 +35,14 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+# Load .env from repo root before any os.environ reads below.
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+except ImportError:
+    pass  # python-dotenv not installed; rely on shell environment
+
 from fastapi import File, Form, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -217,18 +224,8 @@ app.router.routes.insert(0, Route("/reset", _http_reset, methods=["POST"]))
 app.router.routes.insert(1, Route("/step", _http_step, methods=["POST"]))
 
 
-# ── CORS allowlist (env-driven) ──────────────────────────────────────────────
-# Defaults are dev-friendly; tighten via ALLOWED_ORIGINS="https://a.com,https://b.com".
-
-_allowed_origins = config.allowed_origins()
-_allow_credentials = "*" not in _allowed_origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_allowed_origins,
-    allow_credentials=_allow_credentials,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
+# ── CORS ─────────────────────────────────────────────────────────────────────
+config.CORSConfig.from_env().register(app)
 
 
 # ── API-key authentication (env-driven) ──────────────────────────────────────
@@ -312,7 +309,16 @@ _ONLINE_RL_ENABLED = (
 )
 _ONLINE_RL_LR = float(_os.environ.get("FRAUD_HUNTER_ONLINE_RL_LR", "0.03"))
 _ONLINE_RL_TEMP = float(_os.environ.get("FRAUD_HUNTER_ONLINE_RL_TEMPERATURE", "1.0"))
-online_rl = OnlineRLPolicy(learning_rate=_ONLINE_RL_LR, temperature=_ONLINE_RL_TEMP)
+
+# Weights file written by training/train_api.py and updated on server shutdown.
+# Lets offline training seed the server's bandit without a full restart.
+_BANDIT_WEIGHTS_PATH = Path(__file__).resolve().parent.parent / "assets" / "bandit_weights.json"
+
+online_rl = OnlineRLPolicy(
+    learning_rate=_ONLINE_RL_LR,
+    temperature=_ONLINE_RL_TEMP,
+    weights_path=_BANDIT_WEIGHTS_PATH,
+)
 
 _UPLOAD_EXPLICIT = (_os.environ.get("FRAUD_HUNTER_UPLOAD_ENABLED") or "").strip().lower()
 _UPLOAD_ENABLED = (
@@ -395,6 +401,72 @@ def _resolve_agent_config(override: dict[str, Any] | None = None) -> dict[str, s
     }
 
 
+def _is_anthropic_provider(base_url: str) -> bool:
+    return "anthropic.com" in base_url.lower()
+
+
+def _build_llm_request(
+    resolved: dict[str, str | bool],
+    messages: list[dict[str, str]],
+) -> urllib.request.Request:
+    """Build the provider-appropriate HTTP request object."""
+    base_url = str(resolved["base_url"])
+    api_key = str(resolved["api_key"])
+    model = str(resolved["model"])
+
+    if _is_anthropic_provider(base_url):
+        # Anthropic Messages API — separate system prompt, x-api-key header
+        system_text = next((m["content"] for m in messages if m["role"] == "system"), "")
+        user_messages = [m for m in messages if m["role"] != "system"]
+        body: dict[str, Any] = {
+            "model": model,
+            "max_tokens": 512,
+            "messages": user_messages,
+        }
+        if system_text:
+            body["system"] = system_text
+        req = urllib.request.Request(
+            f"{base_url}/messages",
+            method="POST",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01",
+            },
+        )
+        if api_key:
+            req.add_header("x-api-key", api_key)
+    else:
+        # OpenAI-compatible: OpenAI, Groq, OpenRouter, HuggingFace Inference,
+        # Together AI, Mistral, Cohere, Fireworks, Perplexity, …
+        body = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.2,
+            "max_tokens": 512,
+        }
+        req = urllib.request.Request(
+            f"{base_url}/chat/completions",
+            method="POST",
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        if api_key:
+            req.add_header("Authorization", f"Bearer {api_key}")
+
+    return req
+
+
+def _parse_llm_response(base_url: str, body: str) -> str:
+    """Extract the assistant text content from a provider response body."""
+    parsed = json.loads(body)
+    if _is_anthropic_provider(base_url):
+        # {"content": [{"type": "text", "text": "..."}], ...}
+        return ((parsed.get("content") or [{}])[0].get("text") or "")
+    # OpenAI-compatible: {"choices": [{"message": {"content": "..."}}]}
+    return (((parsed.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+
+
 def _generate_action_with_llm(
     observation: dict[str, Any],
     objective: str,
@@ -408,23 +480,11 @@ def _generate_action_with_llm(
     if not resolved["base_url"] or not resolved["model"]:
         raise RuntimeError("missing FRAUD_HUNTER_LLM_BASE_URL or FRAUD_HUNTER_LLM_MODEL")
 
-    payload = {
-        "model": resolved["model"],
-        "messages": _agent_prompt(observation, objective, user_message=user_message),
-        "temperature": 0.2,
-        "max_tokens": 380,
-    }
-    req = urllib.request.Request(
-        f"{resolved['base_url']}/chat/completions",
-        method="POST",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    if resolved["api_key"]:
-        req.add_header("Authorization", f"Bearer {resolved['api_key']}")
+    messages = _agent_prompt(observation, objective, user_message=user_message)
+    req = _build_llm_request(resolved, messages)
 
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             body = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
@@ -433,8 +493,7 @@ def _generate_action_with_llm(
         raise RuntimeError(f"LLM request failed: {exc}") from exc
 
     try:
-        parsed = json.loads(body)
-        content = (((parsed.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+        content = _parse_llm_response(str(resolved["base_url"]), body)
     except Exception as exc:
         raise RuntimeError(f"invalid LLM response payload: {exc}") from exc
 
@@ -544,19 +603,41 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RateLimitMiddleware)
 
 
-# ── Startup warnings ──────────────────────────────────────────────────────────
+# ── Startup / shutdown ────────────────────────────────────────────────────────
 import logging as _logging
+from contextlib import asynccontextmanager as _asynccontextmanager
 
 _startup_logger = _logging.getLogger("fraud_hunter_env.app")
-if not _API_KEYS:
-    _startup_logger.warning(
-        "FRAUD_HUNTER_API_KEYS not set — API key auth is DISABLED (open sandbox mode)"
-    )
-if _ONLINE_RL_ENABLED:
-    _startup_logger.info(
-        "Online RL is ENABLED (FRAUD_HUNTER_ONLINE_RL_ENABLED=true); "
-        "policy weights will update on every episode terminal reward."
-    )
+
+
+@_asynccontextmanager
+async def _lifespan(application):
+    # ── startup ──────────────────────────────────────────────────────────────
+    if not _API_KEYS:
+        _startup_logger.warning(
+            "FRAUD_HUNTER_API_KEYS not set — API key auth is DISABLED (open sandbox mode)"
+        )
+    if _ONLINE_RL_ENABLED:
+        _startup_logger.info(
+            "Online RL is ENABLED; policy weights update on every terminal reward."
+        )
+    if _BANDIT_WEIGHTS_PATH.exists():
+        _startup_logger.info("Bandit weights loaded from %s (%d updates)",
+                             _BANDIT_WEIGHTS_PATH, online_rl._updates)
+    else:
+        _startup_logger.info("No bandit weights file found — starting from scratch. "
+                             "Run training/train_api.py to pre-train.")
+    yield
+    # ── shutdown ─────────────────────────────────────────────────────────────
+    try:
+        online_rl.save(_BANDIT_WEIGHTS_PATH)
+        _startup_logger.info("Bandit weights saved to %s (%d updates)",
+                             _BANDIT_WEIGHTS_PATH, online_rl._updates)
+    except Exception as exc:
+        _startup_logger.warning("Could not save bandit weights: %s", exc)
+
+
+app.router.lifespan_context = _lifespan
 
 
 # ── Custom web UI: mount web/index.html ──────────────────────────────────────

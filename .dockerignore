@@ -25,6 +25,9 @@ __pycache__/
 # Version control
 .git/
 
+# Docs / articles — not needed in image
+ARTICLE.md
+
 # IDE / OS
 .idea/
 .vscode/

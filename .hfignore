@@ -37,13 +37,14 @@ __pycache__/*
 openenv_fraud_hunter_env.egg-info/
 .pytest_cache/
 
-# Dev / scratch
+# Dev / scratch / articles
 .claude/
 .claude/*
 .codex/
 .codex/*
 dataset_ideas/
 research_and_eda.ipynb
+ARTICLE.md
 
 # IDE / OS
 .idea/

@@ -87,6 +87,10 @@ case DB (CoT-grounding bonus).
 A complete `entity → link → contradiction` proof chain at submission time
 multiplies the terminal reward by ×1.5.
 
+![Reward constants at each grader layer](assets/reward_constants.png)
+![Typology multipliers](assets/typology_multipliers.png)
+![Investigation step rewards](assets/investigation_step_rewards.png)
+
 ### RLVE: 5-tier adaptive curriculum (in [`server/difficulty.py`](server/difficulty.py))
 
 The `DifficultyManager` tracks a per-session 20-episode rolling reward
@@ -115,6 +119,9 @@ trains in the background. Both are produced by [`eval.py`](eval.py).
 
 ![Baseline vs scripted-expert reward](assets/baseline_vs_expert_episode_reward.png)
 ![Baseline vs scripted-expert recall](assets/baseline_vs_expert_agentic_recall.png)
+![Baseline vs scripted-expert CoT validity](assets/baseline_vs_expert_cot_validity_score.png)
+
+![Hallucination penalty distribution](assets/hallucination_distribution.png)
 
 A ~91-point gap in mean reward and 3.4× improvement in agentic recall
 (0.78 vs 0.23), on a fully programmatic grader. This is the *signal an
