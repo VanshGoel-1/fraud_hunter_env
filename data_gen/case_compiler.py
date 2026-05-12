@@ -375,6 +375,198 @@ def generate_multimodal_aks_case(
     return case_dir
 
 
+# ── Variant entry points (PPP, shell-only, dead-patient) ────────────────────
+
+def generate_ppp_fraud_case(
+    base_dir: Path | str,
+    case_id: str,
+    tier: int = 1,
+    rng_seed: int | None = None,
+) -> Path:
+    """Primary typology: PPP loan fraud (inflated headcount vs payroll records).
+
+    No AKS/dead-patient signals — the only fraud signal is the
+    loan_applications ↔ payroll_records contradiction.
+    """
+    base_dir = Path(base_dir)
+    case_dir = base_dir / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    db_path = case_dir / "medicare_records.db"
+    if db_path.exists():
+        db_path.unlink()
+    comms_dir = case_dir / "intercepted_comms"
+    scans_dir = case_dir / "scanned_claims"
+    comms_dir.mkdir(exist_ok=True)
+    scans_dir.mkdir(exist_ok=True)
+
+    if rng_seed is None:
+        digest = hashlib.sha256(case_id.encode()).digest()
+        rng_seed = int.from_bytes(digest[:8], "big") % (2 ** 31)
+    rng = random.Random(rng_seed)
+
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    cur.executescript(_SCHEMA_SQL)
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("tier", str(tier)))
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("seed", str(rng_seed)))
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("case_id", case_id))
+
+    corps, bens = _plant_background(cur, rng, tier)
+    typologies: list[str] = []
+
+    ppp_eid = _plant_ppp_fraud(cur, rng, typologies)
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)",
+                ("typologies", json.dumps(typologies)))
+    conn.commit()
+    conn.close()
+    return case_dir
+
+
+def generate_shell_chain_case(
+    base_dir: Path | str,
+    case_id: str,
+    tier: int = 1,
+    rng_seed: int | None = None,
+) -> Path:
+    """Primary typology: shell-company chain only (4+ layer UBO hierarchy).
+
+    No billing anomalies — the only fraud signal is the link_shell proof chain
+    through corporate_registry.
+    """
+    base_dir = Path(base_dir)
+    case_dir = base_dir / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    db_path = case_dir / "medicare_records.db"
+    if db_path.exists():
+        db_path.unlink()
+    (case_dir / "intercepted_comms").mkdir(exist_ok=True)
+    (case_dir / "scanned_claims").mkdir(exist_ok=True)
+
+    if rng_seed is None:
+        digest = hashlib.sha256(case_id.encode()).digest()
+        rng_seed = int.from_bytes(digest[:8], "big") % (2 ** 31)
+    rng = random.Random(rng_seed)
+
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    cur.executescript(_SCHEMA_SQL)
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("tier", str(tier)))
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("seed", str(rng_seed)))
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("case_id", case_id))
+
+    _plant_background(cur, rng, tier)
+
+    # Plant a 4-layer shell chain in corporate_registry
+    fraud_ubo_id = f"U_SHELL_{rng.randint(1000, 9999)}"
+    shell_depth = max(4, min(tier + 2, 6))
+    prior_eid: str | None = None
+    shell_names: list[str] = []
+    for layer in range(shell_depth):
+        eid = f"E_SHELL_{layer}_{rng.randint(10, 99)}"
+        name = (
+            f"{rng.choice(['Apex','Vantage','Stratos','Helios','Nexus'])} "
+            f"{rng.choice(['Holdings','Capital','Ventures','Partners','Group'])} "
+            f"{'LLC' if layer < shell_depth - 1 else 'Corp'}"
+        )
+        cur.execute("INSERT INTO corporate_registry VALUES (?,?,?,?,?,?,?,?)",
+                    (eid, name, f"TX-SH{layer}", prior_eid, fraud_ubo_id,
+                     _rand_date(rng, "2019-01-01", "2023-06-01"),
+                     rng.choice(_STATES), None))
+        cur.execute("INSERT INTO ground_truth VALUES (?,?)",
+                    ("entity", json.dumps({"name": name, "kind": "corporation"})))
+        if prior_eid is not None:
+            cur.execute("INSERT INTO ground_truth VALUES (?,?)",
+                        ("shell_link", json.dumps(
+                            {"child": name, "parent": shell_names[-1]})))
+        shell_names.append(name)
+        prior_eid = eid
+
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)",
+                ("typologies", json.dumps(["foreign_affiliation"])))
+    conn.commit()
+    conn.close()
+    return case_dir
+
+
+def generate_dead_patient_case(
+    base_dir: Path | str,
+    case_id: str,
+    tier: int = 1,
+    rng_seed: int | None = None,
+) -> Path:
+    """Primary typology: dead-patient claim.
+
+    beneficiary_summary has BENE_DEATH_DT set before the carrier_claims
+    CLM_FROM_DT — single clean contradiction, no AKS noise.
+    """
+    base_dir = Path(base_dir)
+    case_dir = base_dir / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    db_path = case_dir / "medicare_records.db"
+    if db_path.exists():
+        db_path.unlink()
+    scans_dir = case_dir / "scanned_claims"
+    (case_dir / "intercepted_comms").mkdir(exist_ok=True)
+    scans_dir.mkdir(exist_ok=True)
+
+    if rng_seed is None:
+        digest = hashlib.sha256(case_id.encode()).digest()
+        rng_seed = int.from_bytes(digest[:8], "big") % (2 ** 31)
+    rng = random.Random(rng_seed)
+
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    cur.executescript(_SCHEMA_SQL)
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("tier", str(tier)))
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("seed", str(rng_seed)))
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)", ("case_id", case_id))
+
+    corps, bens = _plant_background(cur, rng, tier)
+    typologies: list[str] = []
+
+    # Force at least one beneficiary to have a death date
+    bid = f"BENE_DEAD_{rng.randint(1000, 9999)}"
+    dob = _rand_date(rng, "1940-01-01", "1960-12-31")
+    dod = _rand_date(rng, "2024-01-01", "2025-06-01")
+    cur.execute(
+        "INSERT INTO beneficiary_summary "
+        "(DESYNPUF_ID, BENE_BIRTH_DT, BENE_DEATH_DT, BENE_SEX_IDENT_CD, "
+        " BENE_RACE_CD, SP_STATE_CODE) VALUES (?,?,?,?,?,?)",
+        (bid, dob, dod, rng.choice(["1", "2"]),
+         rng.choice(["1", "2", "3"]), rng.choice(_STATES)),
+    )
+
+    fraud_npi = generate_valid_npi(rng)
+    bad_date = (datetime.strptime(dod, "%Y-%m-%d")
+                + timedelta(days=rng.randint(15, 60))).strftime("%Y-%m-%d")
+    cid = f"C_DEAD_{rng.randint(1000, 9999)}"
+    cur.execute("INSERT INTO carrier_claims VALUES (?,?,?,?,?,?,?,?,?)",
+                (cid, bid, bad_date, bad_date, fraud_npi, "TX-F",
+                 "99215", 350.0, "428.0"))
+
+    cur.execute("INSERT INTO ground_truth VALUES (?,?)",
+                ("contradiction", json.dumps({
+                    "evidence_a": f"beneficiary:{bid}",
+                    "evidence_b": f"claim:{cid}",
+                    "kind": "dead_patient_claim",
+                })))
+    typologies.append("dead_patient_claim")
+
+    _emit_pdf(cur, scans_dir, tier, rng, ClaimEvidence(
+        claim_id=cid, beneficiary_id=bid, beneficiary_dob=dob,
+        beneficiary_dod=dod, provider_name="Unknown Provider",
+        provider_npi=fraud_npi, service_date=bad_date,
+        hcpcs_code="99215", icd9_code="428.0", amount=350.0,
+        diagnosis_text="Post-mortem billing — congestive heart failure",
+    ))
+
+    cur.execute("INSERT INTO case_metadata VALUES (?,?)",
+                ("typologies", json.dumps(typologies)))
+    conn.commit()
+    conn.close()
+    return case_dir
+
+
 # ── Background (legitimate) data ─────────────────────────────────────────────
 
 def _plant_background(cur, rng: random.Random, tier: int):

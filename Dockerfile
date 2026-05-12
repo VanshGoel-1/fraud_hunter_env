@@ -80,6 +80,9 @@ ENV PYTHONPATH="/app/env:$PYTHONPATH"
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
+RUN useradd -m -u 1001 appuser && chown -R appuser /app
+USER appuser
+
 # Run the FastAPI server
 # The module path is constructed to work with the /app/env structure
 CMD ["sh", "-c", "cd /app/env && uvicorn fraud_hunter_env.server.app:app --host 0.0.0.0 --port 8000"]

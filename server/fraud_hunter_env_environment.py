@@ -367,7 +367,12 @@ class FraudHunterEnvironment(Environment):
             difficulty_tier=self._difficulty_tier,
             done=False,
             reward=0.0,
-            info={"case_id": self._case.case_id, **self._build_metrics(), **self._replay_info()},
+            info={
+                "case_id": self._case.case_id,
+                "case_dir": str(self._case.db_path.parent),
+                **self._build_metrics(),
+                **self._replay_info(),
+            },
         )
 
     def step(self, action: FraudHunterAction) -> FraudHunterObservation:  # type: ignore[override]
@@ -466,6 +471,7 @@ class FraudHunterEnvironment(Environment):
             info={
                 "hits": out.hits,
                 "case_id": self._case.case_id,
+                "case_dir": str(self._case.db_path.parent),
                 **self._build_metrics(),
                 **self._replay_info(),
             },

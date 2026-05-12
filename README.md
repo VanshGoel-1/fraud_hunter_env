@@ -20,7 +20,6 @@ short_description: RLVR environment for training LLMs to investigate FCA fraud
 
 | | |
 |---|---|
-| **Hugging Face Space** | _add your space URL here once pushed (see `Deploy to HF Spaces` below)_ |
 | **Training notebook**  | [`training/grpo_train.ipynb`](training/grpo_train.ipynb) (Colab-ready) |
 | **Slides / writeup**   | [`blog.md`](blog.md) |
 | **Runtime Validation** | `python scripts/validate_runtime.py` |
@@ -109,16 +108,18 @@ trains in the background. Both are produced by [`eval.py`](eval.py).
 
 | Policy | Mean episode reward | Agentic recall |
 |---|---:|---:|
-| `random_baseline` (random schema-valid action) | **−73.05 ± 86.6** | 0.23 |
-| `scripted_expert` (hand-crafted ground-truth-aware policy) | **−5.50 ± 0.0** | 0.33 |
+| `random_baseline` (random schema-valid action) | **−73.05 ± 86.61** | 0.23 |
+| `scripted_expert` (hand-crafted, legitimate SQL only) | **+18.13 ± 0.41** | 0.78 |
+
+*30 episodes each, tier 1, seeds 8001–8030. Regenerate with `python eval.py --episodes 30 --tier 1`.*
 
 ![Baseline vs scripted-expert reward](assets/baseline_vs_expert_episode_reward.png)
 ![Baseline vs scripted-expert recall](assets/baseline_vs_expert_agentic_recall.png)
 
-A 16× gap on the headline reward and a 43% relative improvement in
-agentic recall, on a fully programmatic grader. This is the *signal an
+A ~91-point gap in mean reward and 3.4× improvement in agentic recall
+(0.78 vs 0.23), on a fully programmatic grader. This is the *signal an
 RL-trained policy should at minimum match*; the trained checkpoint plot
-will be appended here once `FRAUD_HUNTER_TRAIN=1 python -m training.grpo_train`
+will be appended here once the GRPO notebook (`training/grpo_train.ipynb`)
 finishes on a T4.
 
 Reproduce:
@@ -162,7 +163,7 @@ python eval.py --episodes 30 --tier 1
 
 ### Optional: re-build the case bank
 
-The repo ships with **5 cases per tier × 5 tiers**. To regenerate or scale up:
+The repo ships with **10 cases per tier × 5 tiers = 50 total** (test mode). To regenerate or scale up:
 
 ```bash
 python -m fraud_hunter_env.data_gen.build_case_bank --mode test         # 10/tier
@@ -171,7 +172,7 @@ python -m fraud_hunter_env.data_gen.build_case_bank --mode custom --count 50
 
 ## 5. Training (GRPO + DAPO)
 
-[`training/grpo_train.py`](training/grpo_train.py) is a single-file Unsloth +
+[`training/grpo_train.ipynb`](training/grpo_train.ipynb) is a single-file Unsloth +
 TRL `GRPOTrainer` setup using:
 
 - **DAPO loss** (normalize by active tokens, not sequence length)
@@ -181,20 +182,20 @@ TRL `GRPOTrainer` setup using:
 - **Reward function**: the env itself; each completion is parsed into
   actions, replayed via `FraudHunterEnvironment.step`, summed reward
   becomes the GRPO advantage signal
-- **CoT-Pass@K**: helper metric in [`training/grpo_train.py`](training/grpo_train.py)
+- **CoT-Pass@K**: helper metric in [`training/grpo_train.ipynb`](training/grpo_train.ipynb)
   for offline eval
 
 Run it on a T4 (HF Jobs):
 
 ```bash
 # Locally (CPU): import-safe smoke test, no GPU work performed
-python -m training.grpo_train
+jupyter nbconvert --to notebook --execute training/grpo_train.ipynb
 
 # On a GPU host (HF Jobs T4 small or larger):
-FRAUD_HUNTER_TRAIN=1 python -m training.grpo_train
+FRAUD_HUNTER_TRAIN=1 jupyter nbconvert --to notebook --execute training/grpo_train.ipynb
 # Or, equivalently, on Hugging Face Jobs:
 hf jobs uv run --with trl --with unsloth --flavor t4-small \
-    -s HF_TOKEN -e FRAUD_HUNTER_TRAIN=1 -- training/grpo_train.py
+    -s HF_TOKEN -e FRAUD_HUNTER_TRAIN=1 -- training/grpo_train.ipynb
 ```
 
 The Colab notebook is at [`training/grpo_train.ipynb`](training/grpo_train.ipynb).
@@ -339,11 +340,19 @@ fraud_hunter_env/
 │   ├── online_rl.py        # online policy-gradient head for real-time updates
 │   └── metrics_bus.py      # in-memory metrics fan-out (SSE + leaderboard)
 ├── training/
-│   ├── grpo_train.py       # Unsloth + TRL GRPO with DAPO loss
-│   └── grpo_train.ipynb    # Colab-ready notebook
-├── tests/                  # optional legacy test suite
+│   └── grpo_train.ipynb    # Colab-ready GRPO + DAPO notebook (grpo_train.py deleted)
+├── tests/
+│   ├── test_case_contracts.py
+│   ├── test_environment.py
+│   ├── test_grader.py
+│   ├── test_http_actions.py
+│   ├── test_models.py
 │   ├── test_online_rl.py
-│   └── test_upload_and_nl_api.py
+│   ├── test_replay.py
+│   ├── test_typology_dispatcher.py
+│   ├── test_upload_and_nl_api.py
+│   └── smoke/
+│       └── test_end_to_end_smoke.py
 ├── web/index.html          # live SSE monitoring dashboard
 └── assets/                 # generated plots committed to the repo
 ```

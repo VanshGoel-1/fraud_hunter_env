@@ -15,6 +15,7 @@ from pathlib import Path
 # from the repository root without requiring manual PYTHONPATH exports.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+# TestClient used for in-process integration validation (fastapi is a runtime dep)
 from fastapi.testclient import TestClient
 
 from fraud_hunter_env.server.app import app

@@ -1,11 +1,11 @@
-import pytest
+import pytest  # noqa: F401 — used for pytest.approx
 from fraud_hunter_env.server.grader import (
     format_gate, grade, GraderOutput, score_cot, validate_npi, _ocr_cap_for,
 )
 from fraud_hunter_env.models import (
     FraudHunterAction, ActionKind, EntityKind,
     FORMAT_GATE_PENALTY, STEP_DECAY, COT_MISSING_PENALTY,
-    HALLUCINATED_ENTITY_PENALTY, EXTRACT_ENTITY_REWARD,
+    CONTRADICTION_REWARD, HALLUCINATED_ENTITY_PENALTY, EXTRACT_ENTITY_REWARD,
     NPI_EXACT_MATCH_BONUS, NPI_MISMATCH_PENALTY,
 )
 from fraud_hunter_env.server.data_loader import _demo_case
@@ -61,16 +61,41 @@ def test_grade_query_corporate(demo_case):
     })
     out = grade(action, demo_case, set(), set(), set(), False, step_count=1)
     assert "corporate_registry_returned" in out.feedback
+    assert out.reward == pytest.approx(STEP_DECAY, rel=1e-3)
+
+def test_npi_luhn_fail():
+    """An NPI that fails the Luhn check must return the mismatch penalty."""
+    # "1234567890" is the demo placeholder — it fails the Luhn check (check digit should be 3).
+    delta, fb = validate_npi("1234567890", "John Doe MD", None)
+    assert delta == NPI_MISMATCH_PENALTY
+    assert "npi_luhn_fail" in fb
 
 def test_npi_exact_match(demo_case):
-    """NPI that matches ground truth should get bonus."""
-    delta, fb = validate_npi("1234567890", "John Doe MD", demo_case)
+    """A Luhn-valid NPI that matches the registry entry earns the exact-match bonus."""
+    from fraud_hunter_env.npi_utils import generate_valid_npi
+    import random
+    valid_npi = generate_valid_npi(random.Random(42))
+    # Patch the demo case registry so the NPI matches.
+    demo_case.conn.execute(
+        "UPDATE corporate_registry SET npi_code = ? WHERE entity_name = 'John Doe MD'",
+        (valid_npi,),
+    )
+    delta, fb = validate_npi(valid_npi, "John Doe MD", demo_case)
     assert delta == NPI_EXACT_MATCH_BONUS
     assert "exact_match" in fb
 
 def test_npi_mismatch(demo_case):
-    """Wrong NPI should get penalty."""
-    delta, fb = validate_npi("0000000000", "John Doe MD", demo_case)
+    """A Luhn-valid but wrong NPI returns the mismatch penalty."""
+    from fraud_hunter_env.npi_utils import generate_valid_npi
+    import random
+    rng = random.Random(1)
+    registered_npi = generate_valid_npi(rng)
+    wrong_npi = generate_valid_npi(rng)
+    demo_case.conn.execute(
+        "UPDATE corporate_registry SET npi_code = ? WHERE entity_name = 'John Doe MD'",
+        (registered_npi,),
+    )
+    delta, fb = validate_npi(wrong_npi, "John Doe MD", demo_case)
     assert delta == NPI_MISMATCH_PENALTY
     assert "mismatch" in fb
 
@@ -107,7 +132,7 @@ def test_typology_multiplier(demo_case):
         "think_trace": "<think>These claims are duplicates</think>",
     })
     out = grade(action, demo_case, set(), set(), set(), False, step_count=1)
-    assert out.reward > 0
+    assert out.reward >= STEP_DECAY + CONTRADICTION_REWARD
     assert "contradiction_confirmed" in out.feedback
 
 def test_contradiction_fuzzy_prefix_match(demo_case):
@@ -209,3 +234,14 @@ def test_code_act_timeout_interrupts_python_loop(demo_case):
 
     assert err is not None
     assert "TIMEOUT" in err
+
+
+def test_sandbox_path_traversal_rejected(demo_case):
+    action = FraudHunterAction.model_validate({
+        "kind": "ocr_document",
+        "pdf_path": "../../../etc/passwd",
+        "think_trace": "<think>Traversal attempt.</think>",
+    })
+    out = grade(action, demo_case, set(), set(), set(), False, step_count=1)
+    assert "ocr_path_violation" in out.feedback
+    assert "OCR_ERROR" in (out.tool_output or "")

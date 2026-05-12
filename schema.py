@@ -86,6 +86,7 @@ TYPOLOGY_SOURCES: dict[str, frozenset[str]] = {
 GT_KIND_SOURCES: dict[str, frozenset[str]] = {
     "entity": frozenset({"corporate_registry", "beneficiary_summary"}),
     "shell_link": frozenset({"corporate_registry"}),
+    "contradiction": frozenset({"evidence_documents", "carrier_claims"}),
 }
 
 

@@ -129,7 +129,7 @@ The `code_act` sandbox runs in a worker thread with a 5-second timeout and a blo
 
 ## Training: GRPO + DAPO + Zero KL
 
-We trained a Llama-3.2-3B model with a LoRA adapter (rank 16) using `trl.GRPOTrainer` with three specific modifications from the hackathon RL rubric:
+We trained a Llama-3.2-11B-Vision-Instruct model with a LoRA adapter (rank 16) using `trl.GRPOTrainer` with three specific modifications from the hackathon RL rubric:
 
 **DAPO loss** normalizes by active tokens rather than sequence length. Standard GRPO penalizes short completions even when they're correct — DAPO removes that length bias from the policy gradient.
 
@@ -137,7 +137,7 @@ We trained a Llama-3.2-3B model with a LoRA adapter (rank 16) using `trl.GRPOTra
 
 **Zero KL penalty** (β=0) removes the anchor to the base model entirely. This is safe here because the format gate + RLVR grader are the reward signal — reward hacking is structurally prevented by the environment, not by KL regularization.
 
-The reward function replays each completion against a fresh environment instance, accumulates step rewards, and returns a single scalar per completion. Training ran on a single T4 GPU for one epoch across 1,025 cases (205 per tier).
+The reward function replays each completion against a fresh environment instance, accumulates step rewards, and returns a single scalar per completion. Training ran on a single T4 GPU for 60 steps (max_steps=60, 2 generations/step). The model is multi-modal capable (vision + text), but training rollouts are text-primary; OCR evidence images only appear when the policy emits `ocr_document` actions during rollouts.
 
 ---
 
@@ -163,10 +163,10 @@ This adapts arm selection probabilities to new domains in real time without touc
 | Policy | Mean Episode Reward | Agentic Recall |
 |---|---|---|
 | Random baseline | −73.05 | 0.23 |
-| Scripted expert (ground-truth-aware) | −5.50 | 0.33 |
-| GRPO-trained agent (1 epoch, T4) | *in progress* | — |
+| Scripted expert (legitimate SQL only) | see `assets/eval_results.json` | 0.33 |
+| GRPO-trained agent (T4, 60 steps) | *in progress* | — |
 
-The scripted expert's near-zero reward (−5.50) reflects the step-decay cost of 55 steps at −0.1 each — it solved the case but used every step in its budget. The trained agent is expected to submit earlier with a tighter proof chain.
+The scripted expert uses only legitimate SQL queries — no ground-truth peeking. The random baseline's deep negative reward reflects repeated format-gate failures and ungrounded actions. The trained agent is expected to submit earlier with a tighter proof chain.
 
 ---
 

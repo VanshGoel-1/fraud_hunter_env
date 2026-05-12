@@ -89,7 +89,10 @@ class DifficultyManager:
             return self._profiles[session_id]
 
     def get_tier(self, session_id: str) -> int:
-        return self.get_or_create(session_id).current_tier
+        with self._lock:
+            if session_id not in self._profiles:
+                self._profiles[session_id] = AgentProfile(session_id=session_id)
+            return self._profiles[session_id].current_tier
 
     def record_episode(
         self,

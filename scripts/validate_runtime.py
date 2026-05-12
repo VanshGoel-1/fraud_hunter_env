@@ -24,7 +24,6 @@ def _compile_targets() -> None:
         PROJECT_ROOT / "server" / "grader.py",
         PROJECT_ROOT / "server" / "fraud_hunter_env_environment.py",
         PROJECT_ROOT / "server" / "difficulty.py",
-        PROJECT_ROOT / "training" / "grpo_train.py",
         PROJECT_ROOT / "eval.py",
         PROJECT_ROOT / "demo.py",
         PROJECT_ROOT / "scripts" / "http_surface_check.py",

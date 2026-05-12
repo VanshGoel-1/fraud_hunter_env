@@ -73,7 +73,10 @@ metrics_bus = InMemoryMetricsBus(persist_path=_metrics_persist_path)
 _SEED_RANGE_BY_SCOPE: dict[str, tuple[int, int] | None] = {"global": None}
 _SEED_SCOPE_LOCK = threading.Lock()
 _HTTP_SESSION_ENVS: dict[str, FraudHunterEnvironment] = {}
+_HTTP_SESSION_LAST_ACCESS: dict[str, float] = {}
 _HTTP_SESSION_LOCK = threading.Lock()
+_HTTP_SESSION_MAX = 1000
+_HTTP_SESSION_IDLE_SECS = 3600
 _REQUEST_SEED_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_seed_scope",
     default="global",
@@ -107,12 +110,37 @@ def _http_session_key(request: Request) -> str:
     return _request_seed_scope(request)
 
 
+def _evict_idle_http_sessions() -> None:
+    cutoff = time.time() - _HTTP_SESSION_IDLE_SECS
+    stale = [k for k, t in _HTTP_SESSION_LAST_ACCESS.items() if t < cutoff]
+    for k in stale:
+        env = _HTTP_SESSION_ENVS.pop(k, None)
+        _HTTP_SESSION_LAST_ACCESS.pop(k, None)
+        if env is not None:
+            try:
+                env.close()
+            except Exception:
+                pass
+    if len(_HTTP_SESSION_ENVS) > _HTTP_SESSION_MAX:
+        oldest = sorted(_HTTP_SESSION_LAST_ACCESS, key=_HTTP_SESSION_LAST_ACCESS.get)
+        for k in oldest[: len(_HTTP_SESSION_ENVS) - _HTTP_SESSION_MAX]:
+            env = _HTTP_SESSION_ENVS.pop(k, None)
+            _HTTP_SESSION_LAST_ACCESS.pop(k, None)
+            if env is not None:
+                try:
+                    env.close()
+                except Exception:
+                    pass
+
+
 def _get_or_create_http_env(request: Request) -> FraudHunterEnvironment:
     key = _http_session_key(request)
     with _HTTP_SESSION_LOCK:
+        _HTTP_SESSION_LAST_ACCESS[key] = time.time()
         existing = _HTTP_SESSION_ENVS.get(key)
         if existing is not None:
             return existing
+        _evict_idle_http_sessions()
         env = FraudHunterEnvironment(
             on_episode_end=metrics_bus.record,
             case_seed_range=_active_seed_range(),
@@ -133,6 +161,60 @@ app = create_app(
     observation_cls=FraudHunterObservation,
     env_name="fraud_hunter_env",
 )
+
+# ── Override stateless OpenEnv /reset and /step with session-aware versions ──
+# The framework's built-in /reset and /step create and destroy a fresh
+# environment on every call (stateless by OpenEnv design). That means /step
+# always runs on an uninitialized env → reward=0, tool_output=None.
+# We remove those routes and re-register them against _HTTP_SESSION_ENVS so
+# multi-step HTTP sessions work correctly. WebSocket (/ws) is unaffected.
+_router_routes = app.router.routes
+for _i in range(len(_router_routes) - 1, -1, -1):
+    _r = _router_routes[_i]
+    if getattr(_r, "path", None) in {"/reset", "/step"} and getattr(_r, "methods", None):
+        _router_routes.pop(_i)
+
+
+async def _http_reset(request: Request) -> JSONResponse:
+    env = _get_or_create_http_env(request)
+    obs = env.reset()
+    session_id = _http_session_key(request)
+    return JSONResponse({
+        "session_id": session_id,
+        "observation": obs.model_dump(exclude_none=True, mode="json"),
+        "reward": obs.reward,
+        "done": obs.done,
+    })
+
+
+async def _http_step(request: Request) -> JSONResponse:
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "request body must be JSON"}, status_code=400)
+
+    action_payload = payload.get("action") if isinstance(payload, dict) else None
+    if not isinstance(action_payload, dict):
+        return JSONResponse({"detail": "action must be a JSON object"}, status_code=400)
+
+    try:
+        action = FraudHunterAction.model_validate(action_payload)
+    except Exception as exc:
+        return JSONResponse({"detail": f"invalid action: {exc}"}, status_code=422)
+
+    env = _get_or_create_http_env(request)
+    obs = env.step(action)
+    return JSONResponse({
+        "observation": obs.model_dump(exclude_none=True, mode="json"),
+        "reward": obs.reward,
+        "done": obs.done,
+    })
+
+
+from starlette.routing import Route  # noqa: E402
+
+app.router.routes.insert(0, Route("/reset", _http_reset, methods=["POST"]))
+app.router.routes.insert(1, Route("/step", _http_step, methods=["POST"]))
 
 
 # ── CORS allowlist (env-driven) ──────────────────────────────────────────────
@@ -226,7 +308,7 @@ _ONLINE_RL_EXPLICIT = (_os.environ.get("FRAUD_HUNTER_ONLINE_RL_ENABLED") or "").
 _ONLINE_RL_ENABLED = (
     _ONLINE_RL_EXPLICIT in {"1", "true", "yes", "on"}
     if _ONLINE_RL_EXPLICIT
-    else True
+    else False
 )
 _ONLINE_RL_LR = float(_os.environ.get("FRAUD_HUNTER_ONLINE_RL_LR", "0.03"))
 _ONLINE_RL_TEMP = float(_os.environ.get("FRAUD_HUNTER_ONLINE_RL_TEMPERATURE", "1.0"))
@@ -460,6 +542,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(RateLimitMiddleware)
+
+
+# ── Startup warnings ──────────────────────────────────────────────────────────
+import logging as _logging
+
+_startup_logger = _logging.getLogger("fraud_hunter_env.app")
+if not _API_KEYS:
+    _startup_logger.warning(
+        "FRAUD_HUNTER_API_KEYS not set — API key auth is DISABLED (open sandbox mode)"
+    )
+if _ONLINE_RL_ENABLED:
+    _startup_logger.info(
+        "Online RL is ENABLED (FRAUD_HUNTER_ONLINE_RL_ENABLED=true); "
+        "policy weights will update on every episode terminal reward."
+    )
 
 
 # ── Custom web UI: mount web/index.html ──────────────────────────────────────

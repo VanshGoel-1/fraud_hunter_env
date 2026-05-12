@@ -28,9 +28,9 @@ def run_smoke_test(base_url: str):
                 "think_trace": "<think>Enumerate intercepted communications evidence.</think>",
             },
             {
-                "kind": "query_medicare",
-                "claim_id": "C003",
-                "think_trace": "<think>Probe known claim identifier path for contract sanity.</think>",
+                "kind": "sql_query",
+                "sql_statement": "SELECT CLM_ID FROM carrier_claims LIMIT 1",
+                "think_trace": "<think>Discover a real claim ID from the active case.</think>",
             },
             {
                 "kind": "submit_case",

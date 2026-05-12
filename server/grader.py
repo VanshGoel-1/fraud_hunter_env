@@ -290,6 +290,9 @@ def validate_npi(
     if not npi_code:
         return 0.0, "npi_not_provided"
 
+    if not validate_npi_luhn(npi_code):
+        return NPI_MISMATCH_PENALTY, f"npi_luhn_fail:{npi_code}"
+
     # Look up ground-truth NPI from corporate_registry
     cur = case.conn.execute(
         "SELECT npi_code FROM corporate_registry WHERE entity_name = ? COLLATE NOCASE LIMIT 1",
@@ -759,5 +762,5 @@ def compute_agentic_recall(
         pass
 
     if not gold:
-        return 1.0
+        return 0.0
     return len(queried_tables & gold) / len(gold)

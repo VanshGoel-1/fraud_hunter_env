@@ -68,11 +68,10 @@ def random_policy(obs, state: dict, step: int) -> dict | None:
     return random.choice(pool)
 
 
-# ── Scripted-expert policy (HTTP-only, reads ground_truth via the API) ───────
-# An "upper bound" hand-crafted agent. Cheats by reading the `ground_truth`
-# table — but does so through legitimate `sql_query` actions, the same way a
-# trained model could in principle. This is the moral equivalent of a
-# trained-policy stand-in until the GRPO checkpoint is ready.
+# ── Scripted-expert policy ────────────────────────────────────────────────────
+# An "upper bound" hand-crafted agent. Uses only legitimate SQL queries against
+# the case database — no ground_truth peeking. Entity extraction is heuristic:
+# finds shell companies via parent_entity_id links in corporate_registry.
 
 _EXPERT_QUERIES: list[tuple[str, str]] = [
     ("Search for shell-company chains sharing a UBO.",
@@ -93,31 +92,28 @@ _EXPERT_QUERIES: list[tuple[str, str]] = [
      "SELECT memo, amount FROM general_ledger ORDER BY amount DESC LIMIT 5"),
     ("Index evidence documents (PDFs).",
      "SELECT doc_id, claim_id FROM evidence_documents LIMIT 5"),
-    ("Read ground-truth target entity.",
-     "SELECT payload_json FROM ground_truth WHERE kind='entity' LIMIT 1"),
+    ("Find shell entities via parent_entity_id links (legitimate heuristic).",
+     "SELECT entity_name FROM corporate_registry "
+     "WHERE parent_entity_id IS NOT NULL LIMIT 1"),
 ]
 
 
-def _parse_gt_name(tool_output: str | None) -> str | None:
-    """Extract a name from a ground_truth payload returned by sql_query."""
+def _parse_entity_name(tool_output: str | None) -> str | None:
+    """Extract an entity name from a sql_query tool_output row."""
     if not tool_output:
         return None
-    # tool_output renders rows; find a JSON-shaped substring containing "name"
-    for m in re.finditer(r"\{[^{}]*\}", tool_output):
-        try:
-            payload = json.loads(m.group())
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict) and "name" in payload:
-            return payload["name"]
+    for line in tool_output.splitlines():
+        line = line.strip().strip("|").strip()
+        if line and not line.startswith("-") and not line.lower().startswith("entity_name"):
+            return line
     return None
 
 
 def scripted_expert_policy(obs, state: dict, step: int) -> dict | None:
     """Hand-crafted upper bound: 8 SQL queries hitting all required source
-    tables, then extract + submit. Every action wraps a <think> block so the
-    CoT-validity layer of the grader rewards it. Network-only — no in-process
-    DB peeking.
+    tables, then extract a shell entity heuristically + submit. Every action
+    wraps a <think> block so the CoT-validity layer rewards it.
+    Network-only — no in-process DB peeking, no ground_truth access.
     """
     if step < len(_EXPERT_QUERIES):
         thought, sql = _EXPERT_QUERIES[step]
@@ -128,21 +124,21 @@ def scripted_expert_policy(obs, state: dict, step: int) -> dict | None:
         }
 
     if step == len(_EXPERT_QUERIES):
-        # Last obs was the ground-truth read; parse the entity name from it.
+        # Last obs was the shell-entity query; parse the name heuristically.
         if obs is not None:
             tool_output = getattr(obs, "tool_output", None)
-            name = _parse_gt_name(tool_output)
+            name = _parse_entity_name(tool_output)
             if name:
-                state["gt_name"] = name
-        target = state.get("gt_name")
+                state["shell_name"] = name
+        target = state.get("shell_name")
         if target:
             return {
                 "kind": "extract_entity",
                 "extracted_name": target,
                 "extracted_kind": "corporation",
                 "think_trace": (
-                    f"<think>Ground-truth points to {target}. "
-                    f"Extracting as a fraudulent corporation.</think>"
+                    f"<think>corporate_registry shows {target} has a parent entity — "
+                    f"shell indicator. Extracting as a fraudulent corporation.</think>"
                 ),
             }
 
@@ -356,6 +352,20 @@ def main() -> None:
             f"Start it first:  uv run server/app.py\n\n"
         )
         sys.exit(2)
+
+    # Warn if the case bank is too small to cover the eval seed range.
+    from fraud_hunter_env import config as _cfg
+    _bank = _cfg.case_bank_dir()
+    if _bank.is_dir():
+        _db_count = sum(1 for p in _bank.rglob("medicare_records.db"))
+        _seed_span = EVAL_SEED_RANGE[1] - EVAL_SEED_RANGE[0]
+        if _db_count < _seed_span:
+            sys.stderr.write(
+                f"[WARNING] case bank has {_db_count} cases but eval seed range spans "
+                f"{_seed_span} seeds ({EVAL_SEED_RANGE}). "
+                f"On-the-fly generation will cover the gap.\n"
+            )
+
     _configure_eval_seed_range(args.base_url)
 
     all_results: dict[str, list[dict]] = {}

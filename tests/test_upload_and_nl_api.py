@@ -3,9 +3,23 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
 from fastapi.testclient import TestClient
 
 from fraud_hunter_env.server import app as server_app
+
+
+@pytest.fixture(autouse=True)
+def _restore_upload_globals():
+    orig_enabled = server_app._UPLOAD_ENABLED
+    orig_dir = server_app._UPLOAD_DIR
+    orig_model = server_app._AGENT_MODEL
+    orig_base_url = server_app._AGENT_BASE_URL
+    yield
+    server_app._UPLOAD_ENABLED = orig_enabled
+    server_app._UPLOAD_DIR = orig_dir
+    server_app._AGENT_MODEL = orig_model
+    server_app._AGENT_BASE_URL = orig_base_url
 
 
 def test_upload_csv_dataset_roundtrip(tmp_path):

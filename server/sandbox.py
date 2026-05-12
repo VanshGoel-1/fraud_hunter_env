@@ -390,6 +390,11 @@ def execute_code(
     thread.join(timeout=_TIMEOUT_SECONDS)
 
     if thread.is_alive():
+        # The worker thread keeps executing until _timeout_trace fires TimeoutError
+        # on the next Python opcode (typically within microseconds of the deadline).
+        # daemon=True ensures it is reaped at process exit if it somehow outlives
+        # this function. No explicit cancellation primitive is needed for pure-Python
+        # loops; C-extension blocking calls are not exposed by this sandbox.
         return "", f"TIMEOUT: Code exceeded {_TIMEOUT_SECONDS}s limit", {
             "rows_returned": 0,
             "files_read": files_read,

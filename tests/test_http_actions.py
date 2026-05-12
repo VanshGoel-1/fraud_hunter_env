@@ -1,8 +1,24 @@
 from __future__ import annotations
 
+import os
+
 from fastapi.testclient import TestClient
 
 from fraud_hunter_env.server.app import app
+
+
+def _first_pdf_in_case(reset_obs: dict) -> str:
+    """Return the first real PDF path from the reset observation's case_dir."""
+    case_dir = ((reset_obs.get("observation") or {}).get("info") or {}).get("case_dir", "")
+    if case_dir:
+        sc_dir = os.path.join(case_dir, "scanned_claims")
+        try:
+            pdfs = sorted(f for f in os.listdir(sc_dir) if f.endswith(".pdf"))
+            if pdfs:
+                return "scanned_claims/" + pdfs[0]
+        except OSError:
+            pass
+    return "scanned_claims/doc_claim.pdf"
 
 
 def test_live_http_path_accepts_untested_action_payloads():
@@ -13,6 +29,7 @@ def test_live_http_path_accepts_untested_action_payloads():
 
     reset_payload = client.post("/reset")
     assert reset_payload.status_code == 200
+    pdf_path = _first_pdf_in_case(reset_payload.json() or {})
 
     actions = [
         {
@@ -35,7 +52,7 @@ def test_live_http_path_accepts_untested_action_payloads():
         },
         {
             "kind": "ocr_document",
-            "pdf_path": "scanned_claims/doc_claim.pdf",
+            "pdf_path": pdf_path,
             "think_trace": "<think>Validate HTTP serialization for ocr_document.</think>",
         },
         {

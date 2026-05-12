@@ -23,7 +23,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+try:
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+except ImportError as _pil_err:
+    raise ImportError(
+        "Pillow is required for PDF evidence generation. "
+        "Install with: pip install Pillow"
+    ) from _pil_err
 
 
 # 8.5" x 11" @ 150 DPI

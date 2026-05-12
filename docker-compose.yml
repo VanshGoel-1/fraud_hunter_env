@@ -17,9 +17,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Optional: set FRAUD_HUNTER_API_KEY to enable API-key auth in front of
-      # /reset, /step, /state. Leave unset for an open local sandbox.
-      # FRAUD_HUNTER_API_KEY: "change-me"
+      # Optional: set FRAUD_HUNTER_API_KEYS (plural) to enable API-key auth.
+      # Comma-separated list. Leave unset for an open local sandbox.
+      # FRAUD_HUNTER_API_KEYS: "change-me"
       PYTHONUNBUFFERED: "1"
     volumes:
       # Live-mount the case bank so you don't rebuild when the dataset changes.

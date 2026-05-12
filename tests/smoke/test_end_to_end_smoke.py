@@ -21,14 +21,28 @@ def test_case_brief_documents_contradiction_contract_and_code_act_tooling():
     assert "Use code_act to inspect intercepted_comms/*.txt" in case_brief
 
 
+def _first_pdf_from_reset(reset_payload: dict) -> str:
+    """Resolve the first real PDF from the reset observation's case_dir."""
+    import os
+    case_dir = (((reset_payload or {}).get("observation") or {}).get("info") or {}).get("case_dir", "")
+    if case_dir:
+        sc_dir = os.path.join(case_dir, "scanned_claims")
+        try:
+            pdfs = sorted(f for f in os.listdir(sc_dir) if f.endswith(".pdf"))
+            if pdfs:
+                return "scanned_claims/" + pdfs[0]
+        except OSError:
+            pass
+    return "scanned_claims/doc_claim.pdf"
+
+
 @pytest.mark.smoke
 def test_http_smoke_for_critical_actions_and_multimodal_payload():
     client = TestClient(app)
 
     post_testclient_json(client, "/fraud_hunter/seed_range", {"seed_min": 8001, "seed_max": 10000})
-    post_testclient_json(client, "/reset")
-
-    pdf_path = "scanned_claims/doc_claim.pdf"
+    reset_payload = post_testclient_json(client, "/reset")
+    pdf_path = _first_pdf_from_reset(reset_payload)
 
     actions = [
         {
@@ -70,15 +84,19 @@ def test_http_smoke_for_critical_actions_and_multimodal_payload():
     for action in actions:
         payload = step_testclient_json(client, action)
         observation = payload["observation"]
-        assert "base64_document" in observation
-        assert "grader_feedback" in observation
-        assert isinstance(payload["reward"], (int, float))
+        # base64_document is only present for ocr_document actions (None fields are excluded)
         if action["kind"] == "ocr_document":
             ocr_payload = payload
+        else:
+            assert "base64_document" not in observation or observation["base64_document"] is None
+        assert "grader_feedback" in observation
+        assert isinstance(payload["reward"], (int, float))
 
     assert ocr_payload is not None
     base64_document = (((ocr_payload or {}).get("observation") or {}).get("base64_document"))
     assert base64_document is None or isinstance(base64_document, str)
+    ocr_tool_output = (((ocr_payload or {}).get("observation") or {}).get("tool_output") or "")
+    assert "OCR_ERROR" not in ocr_tool_output, f"OCR failed: {ocr_tool_output[:200]}"
 
 
 @pytest.mark.smoke

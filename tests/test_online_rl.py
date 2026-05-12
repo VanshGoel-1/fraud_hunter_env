@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from fraud_hunter_env.server.app import app
+import fraud_hunter_env.server.app as server_app
+
+
+@pytest.fixture(autouse=True)
+def _enable_online_rl():
+    """Enable online RL for this test module (default is now False per N-09)."""
+    original = server_app._ONLINE_RL_ENABLED
+    server_app._ONLINE_RL_ENABLED = True
+    yield
+    server_app._ONLINE_RL_ENABLED = original
 
 
 def test_online_rl_select_and_update_roundtrip():

@@ -78,7 +78,7 @@ class OnlineRLPolicy:
         lower_objective = (objective or "").lower()
         return [
             1.0,
-            min(step_count / 60.0, 1.0),
+            min(step_count / 59.0, 1.0),
             min(max(budget, 0.0) / 100.0, 1.0),
             min(max(tier, 1.0), 5.0) / 5.0,
             1.0 if tool_output else 0.0,
@@ -104,9 +104,20 @@ class OnlineRLPolicy:
                 "think_trace": "<think>Inspect intercepted communications to identify shell entities and links.</think>",
             }
         if arm == "ocr_doc":
+            import os
+            case_dir = (observation.get("info") or {}).get("case_dir", "")
+            pdf_path = "scanned_claims/doc_claim.pdf"
+            if case_dir:
+                sc_dir = os.path.join(case_dir, "scanned_claims")
+                try:
+                    pdfs = sorted(f for f in os.listdir(sc_dir) if f.endswith(".pdf"))
+                    if pdfs:
+                        pdf_path = "scanned_claims/" + pdfs[0]
+                except OSError:
+                    pass
             return {
                 "kind": "ocr_document",
-                "pdf_path": "scanned_claims/doc_claim.pdf",
+                "pdf_path": pdf_path,
                 "think_trace": "<think>Extract claim evidence from the scanned document for contradiction checks.</think>",
             }
         if bene_id or claim_id:

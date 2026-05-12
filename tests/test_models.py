@@ -48,13 +48,13 @@ def test_sql_query_must_be_select():
     with pytest.raises(ValidationError, match="SELECT"):
         FraudHunterAction.model_validate({
             "kind": "sql_query",
-            "sql_statement": "DROP TABLE providers",
+            "sql_statement": "DROP TABLE corporate_registry",
         })
 
 def test_valid_sql_query():
     action = FraudHunterAction.model_validate({
         "kind": "sql_query",
-        "sql_statement": "SELECT * FROM providers",
+        "sql_statement": "SELECT * FROM corporate_registry",
     })
     assert action.kind == ActionKind.SQL_QUERY
 
@@ -67,7 +67,7 @@ def test_code_act_requires_code():
 def test_valid_code_act():
     action = FraudHunterAction.model_validate({
         "kind": "code_act",
-        "python_code": "result = pd.read_sql('SELECT * FROM providers', conn)",
+        "python_code": "result = pd.read_sql('SELECT * FROM corporate_registry', conn)",
     })
     assert action.kind == ActionKind.CODE_ACT
 
