@@ -382,4 +382,4 @@ fraud_hunter_env/
 - TRL OpenEnv guide: <https://huggingface.co/docs/trl/en/openenv>
 - OpenEnv tutorial examples: <https://github.com/meta-pytorch/OpenEnv/tree/main/tutorial/examples>
 - TRL `openenv_sudoku_grpo.ipynb` (template we modelled the GRPO loop on)
-- DAPO paper (loss-type rationale; cited in `training/grpo_train.py`)
+- DAPO paper (loss-type rationale; cited in `training/grpo_train.ipynb`)
